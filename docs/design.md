@@ -33,6 +33,15 @@ The player draws the map by hand on a grid; the game never auto-maps. What you d
 - **Survey tools you upgrade.** A better lantern lights more of the grid, a compass shows facing, a rope measures drops. Your mapping improves, not just your heroes.
 - **Phone-friendly drawing.** Drawing has to feel good on a touch screen: big grid cells, quick tools, undo. This is the riskiest part of the design to get right.
 
+**UI concepts (draft, see the [UI mockups](https://claude.ai/artifact/L8gF3xVez1WppJxiU2pf3u))**
+
+- **First-person view (working assumption).** Hand drawing only matters if the screen doesn't already show the layout.
+- **Phone, exploring:** view on top, party bar, a small map you can draw on, tool row, movement pad.
+- **Phone, map mode:** tap the map for a full-screen zoomed editor with an icon picker. Layers for walls and notes.
+- **Seen but not drawn:** walls the party has seen show as faint dashed lines until you draw them.
+- **Icon set:** treasure, trap, gather, camp, stairs up/down, quicksand, ice slide, enemy, one-way door.
+- **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. WASD to move, Q/E to turn, mouse to draw.
+
 ## Dungeons and generation
 
 Dungeons are randomly generated, but built from hand-made pieces so every floor has something worth drawing.
