@@ -56,6 +56,11 @@ Dungeons are randomly generated, but built from hand-made pieces so every floor 
 - **Ice cave.** Slippery floors slide the party until they hit a wall, so working out where a slide ends is part of mapping it.
 - **Desert.** Quicksand tiles drop the party to the floor below, a way down you can find by accident or mark and use on purpose.
 
+**Secrets and breakable terrain**
+
+- **Destroying blocks.** Some walls can be broken with tools or skills to open shortcuts or hidden rooms. The map changes, so your drawing has to be updated.
+- **Ping items.** Items or skills send out a pulse that briefly reveals nearby secrets: hidden doors, buried chests, traps. Mark them on the map before the reveal fades.
+
 ## Party and combat
 
 You give orders at the start of each fight; the rest plays out automatically. Your choices happen before and around combat, not during it.
@@ -111,7 +116,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 
 ## Tech (to discuss)
 
-The current leaning is a web stack in TypeScript, so one codebase runs on phone and PC. Not decided yet.
+The current leaning is a web stack in TypeScript, so one codebase runs on phone and PC. The first prototype (a generated dungeon you walk through in first person) uses TypeScript, Vite and plain Canvas 2D.
 
 | Option | Strengths | Weaknesses |
 | --- | --- | --- |
