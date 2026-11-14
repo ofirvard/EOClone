@@ -116,7 +116,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 
 ## Tech (to discuss)
 
-The current leaning is a web stack in TypeScript, so one codebase runs on phone and PC. The first prototype (a generated dungeon you walk through in first person) uses TypeScript, Vite and plain Canvas 2D.
+The current leaning is a web stack in TypeScript, so one codebase runs on phone and PC. Not decided yet.
 
 | Option | Strengths | Weaknesses |
 | --- | --- | --- |
