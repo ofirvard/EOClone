@@ -1,0 +1,140 @@
+:root {
+  --bg: #121418;
+  --panel: #1c1f25;
+  --line: #353943;
+  --text: #ece7dc;
+  --muted: #b3aea3;
+  --accent: #e0a33a;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+button:active {
+  border-color: var(--accent);
+  background: rgba(224, 163, 58, 0.15);
+}
+
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.view-wrap {
+  flex: 999 1 560px;
+  min-width: 0;
+}
+
+#view {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  transition: box-shadow 80ms;
+}
+
+#view.bump {
+  box-shadow: 0 0 0 3px #b5462e inset, 0 0 0 2px #b5462e;
+}
+
+.side {
+  flex: 1 1 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pad button {
+  min-height: 56px;
+  font-size: 22px;
+}
+
+.map-panel {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.map-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.map-panel.hidden #map,
+.map-panel.hidden .muted {
+  display: none;
+}
+
+#map {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+}
+
+@media (pointer: coarse) {
+  .keys {
+    display: none;
+  }
+}

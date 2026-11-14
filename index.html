@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>EOClone — prototype</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div>
+        <h1>EOClone</h1>
+        <p id="status" class="muted">Loading…</p>
+      </div>
+      <button id="new-dungeon" type="button">New dungeon</button>
+    </header>
+
+    <main class="layout">
+      <section class="view-wrap" aria-label="First-person view">
+        <canvas id="view" aria-label="First-person view of the dungeon"></canvas>
+      </section>
+
+      <section class="side">
+        <div class="pad" role="group" aria-label="Movement">
+          <button data-move="turnLeft" aria-label="Turn left (Q)">⟲</button>
+          <button data-move="forward" aria-label="Step forward (W)">▲</button>
+          <button data-move="turnRight" aria-label="Turn right (E)">⟳</button>
+          <button data-move="left" aria-label="Step left (A)">◀</button>
+          <button data-move="back" aria-label="Step back (S)">▼</button>
+          <button data-move="right" aria-label="Step right (D)">▶</button>
+        </div>
+
+        <div class="map-panel">
+          <div class="map-head">
+            <span>Debug map</span>
+            <label><input id="reveal" type="checkbox" /> Reveal all</label>
+          </div>
+          <canvas id="map" aria-label="Debug top-down map"></canvas>
+          <p class="muted small">Auto map for testing only. In the game you draw the map yourself.</p>
+        </div>
+
+        <p class="muted small keys">Keys: W/S move · A/D step sideways · Q/E turn · M toggle map · N new dungeon</p>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

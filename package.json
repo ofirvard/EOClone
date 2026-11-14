@@ -1,0 +1,27 @@
+{
+  "name": "eoclone",
+  "version": "0.1.0",
+  "description": "Cartography-focused dungeon crawler prototype",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ofirvard/eoclone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ofirvard/eoclone/issues"
+  },
+  "homepage": "https://github.com/ofirvard/eoclone#readme",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "private": true,
+  "type": "module"
+}
