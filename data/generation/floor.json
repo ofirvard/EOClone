@@ -1,0 +1,9 @@
+{
+	"width": 32,
+	"height": 32,
+	"room_attempts": 60,
+	"max_rooms": 10,
+	"room_min_size": 3,
+	"room_max_size": 7,
+	"extra_connections": 2
+}

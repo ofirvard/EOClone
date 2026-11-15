@@ -25,13 +25,16 @@ Each contract sends you deeper; the map you bring back pays for the next, harder
 
 ## Cartography
 
-The player draws the map by hand on a grid; the game never auto-maps. What you draw is the record you turn in, and it changes how later runs go.
+The player draws the map by hand on a grid. The only thing filled in automatically is your footsteps: cells the party walks on. What you draw is the record you turn in, and it changes how later runs go.
 
+- **Footsteps fill in.** Each cell you step on is filled in on your map, as in Etrian Odyssey. Cells you haven't walked stay blank, even ones you can see.
 - **Hand drawing.** Place walls, doors, stairs and icons on a grid as the party moves. The game remembers only what the party has seen, so the official map is your work.
+- **Walls are lines between cells (decided).** On the map a wall is a bold line on the edge between two cells, as in Etrian Odyssey. Walls are drawn by connecting dots (cell corners): pressing starts a trace that follows the pointer's path from the nearest dot, and a wall is placed only when the line reaches another dot in the same row or column, so a stray touch never leaves a wall. The Wall tool is the default. Start a stroke on a drawn wall to erase it; undo takes back a whole stroke. Walking across an edge proves it's open, so you can't draw a wall there.
+- **Generator vs map walls (prototype).** The generator still builds floors from solid and open cells, and the 3D view shows solid cells as blocks. A real map wall is any edge between an open cell and solid rock, which is what drawn lines are checked against. Thin walls between two open cells (e.g. two rooms sharing one wall) would need the generator to place walls on edges too.
 - **Accuracy is checked.** When you turn in a map, it is compared with the real layout. Accurate maps pay more; a wrong wall costs you, or hurts the next party that uses it.
 - **Notes change play.** Mark a trap and the party walks around it. Marked camp spots let you rest. A marked shortcut makes the next trip faster. Noting enemy types tells you what orders to give before a fight.
 - **Survey tools you upgrade.** A better lantern lights more of the grid, a compass shows facing, a rope measures drops. Your mapping improves, not just your heroes.
-- **Phone-friendly drawing.** Drawing has to feel good on a touch screen: big grid cells, quick tools, undo. This is the riskiest part of the design to get right.
+- **Phone-friendly drawing.** Drawing has to feel good on a touch screen: big grid cells, quick tools, undo, and a zoomable map (pinch or wheel to zoom, two fingers to pan; a second finger cancels a stroke in progress). This is the riskiest part of the design to get right.
 
 **UI concepts (draft, see the [UI mockups](https://claude.ai/artifact/L8gF3xVez1WppJxiU2pf3u))**
 
@@ -40,7 +43,7 @@ The player draws the map by hand on a grid; the game never auto-maps. What you d
 - **Phone, map mode:** tap the map for a full-screen zoomed editor with an icon picker. Layers for walls and notes.
 - **Seen but not drawn:** walls the party has seen show as faint dashed lines until you draw them.
 - **Icon set:** treasure, trap, gather, camp, stairs up/down, quicksand, ice slide, enemy, one-way door.
-- **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. WASD to move, Q/E to turn, mouse to draw.
+- **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. W/S to move, Q/E to strafe, A/D to turn (hold to keep stepping), mouse to draw.
 
 ## Dungeons and generation
 
@@ -60,6 +63,7 @@ Dungeons are randomly generated, but built from hand-made pieces so every floor 
 
 - **Destroying blocks.** Some walls can be broken with tools or skills to open shortcuts or hidden rooms. The map changes, so your drawing has to be updated.
 - **Ping items.** Items or skills send out a pulse that briefly reveals nearby secrets: hidden doors, buried chests, traps. Mark them on the map before the reveal fades.
+- **Locked and breakable doors and chests (idea).** Doors and chests can be locked, needing a key, a lockpick or a skill, or broken open by force. Breaking is quicker but noisy or costly; a locked door you can't open yet is worth marking on the map to come back to. Doors are left out of the first generator prototype and come back with this.
 
 ## Party and combat
 
