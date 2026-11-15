@@ -97,7 +97,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 - The player draws the map by hand.
 - Combat: orders at the start of each fight, then automatic.
 - Dungeons are randomly generated.
-- Runs on phone and PC.
+- Runs on phone and PC as installed apps. Engine: Godot.
 
 **Open questions**
 
@@ -114,12 +114,12 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 - Skill paths (e.g. ice vs fire mage)
 - Shifting dungeon zones
 
-## Tech (to discuss)
+## Tech
 
-The current leaning is a web stack in TypeScript, so one codebase runs on phone and PC. Not decided yet.
+**Engine: Godot** (decided 2026-11-15). The game ships as installed apps on phone (Android, iOS) and PC, with Steam as a target.
 
-| Option | Strengths | Weaknesses |
-| --- | --- | --- |
-| Web: TypeScript + Phaser, or PixiJS/Canvas with React or Svelte for UI | Runs in any browser; can become an offline PWA; wrap with Capacitor for app stores and Tauri or Electron for Steam; familiar stack | No visual editor; you build more tooling yourself |
-| Godot | Full editor; easy path to 3D later | Web export is heavier and less smooth in phone browsers |
-| Unity | Mature, huge ecosystem | Overkill for a grid-based 2D game |
+- **Why Godot:** native phone apps run much better than browser builds, it has a full editor, and its GridMap builds 3D floors straight from a 2D grid.
+- **Language:** GDScript recommended. It keeps a browser build possible later; Godot 4 C# projects can't export to the web.
+- **Structure:** game rules (grid, movement, generation, map checking) stay separate from the 3D view and the map screen. Content lives in data files.
+- **Open:** iOS builds need a Mac with Xcode.
+- **Also considered:** web with Three.js (best for playing in a browser), Unity (too heavy for a grid crawler), Phaser (2D only).

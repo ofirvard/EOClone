@@ -10,4 +10,4 @@ Targets phone and PC.
 
 ## Status
 
-Early design. Tech stack not chosen yet.
+Early design. Engine: Godot. No code yet.
