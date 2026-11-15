@@ -113,6 +113,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 
 **Parking lot (future ideas)**
 
+- City building: the guild's town grows between expeditions, with buildings that unlock services (phase 7 of the [plan](plan.md), still to design)
 - Relationships between heroes
 - Traits heroes gain from events
 - Skill paths (e.g. ice vs fire mage)

@@ -7,10 +7,11 @@ Targets phone and PC.
 ## Docs
 
 - [Design doc](docs/design.md)
+- [Plan](docs/plan.md): build order in eight phases
 
 ## Status
 
-Prototype, step 1: seeded floor generation with a top-down debug view. Engine: Godot 4.7.
+Phase 1 (map making) of the [plan](docs/plan.md): a seeded floor, a first-person view and a hand-drawn map. Engine: Godot 4.7.
 
 ## Running
 
