@@ -39,8 +39,8 @@ godot --headless --path . --script res://tests/run_tests.gd
 - `src/view/`: scenes' scripts that draw or display the rules.
 - `scenes/`: Godot scenes.
 - `data/`: content and tuning (`data/generation/floor.json` sets floor size, room counts, and how many torches there are and how far apart).
-- `data/town/places.json`: the places listed on the town menu, in order. A place with a `scene` opens it.
-- `assets/ui/`: menu art (the parchment scroll behind the town menu buttons).
+- `data/town/places.json`: the places listed on the town menu, in order, each with its icon, plus the picture on the right. A place with a `scene` opens it.
+- `assets/ui/`: menu art: the parchment scroll behind the town menu buttons, the place icons (`icons/`) and the town picture.
 - `data/themes/`: which textures the 3D view uses for walls (with weights), floor, ceiling, stairs up, the trapdoor down, and the torch animation and its light. `basement.json` is the demo dungeon.
 - `assets/textures/`: texture images.
 - `tests/`: headless checks.
@@ -49,4 +49,5 @@ godot --headless --path . --script res://tests/run_tests.gd
 
 - Basement wall, stone floor, stairs and trapdoor textures: *Pixel Art Medieval Interiors* by Acasas.
 - Wall torch animation: *Old Castle sprite Set* by Acasas.
+- Town menu icons and picture (`assets/ui/icons/`, `assets/ui/town_picture.png`): *Strategy Game Icons* pack (author not named in the pack files).
 - Scroll menu buttons (`assets/ui/scroll_button.png`): *Pixelart Medieval UI Pack* (author not named in the pack files).

@@ -44,7 +44,7 @@ The player draws the map by hand on a grid. The only thing filled in automatical
 - **Phone, map mode:** tap the map for a full-screen zoomed editor with an icon picker. Layers for walls and notes.
 - **Seen but not drawn:** walls the party has seen show as faint dashed lines until you draw them.
 - **Icon set:** treasure, trap, gather, camp, stairs up/down, quicksand, ice slide, enemy, one-way door.
-- **Town menu (prototype).** The game starts in town: a list of places on the left (Delve, Smith, Inn, Tavern, Shop, Alchemist, Guild hall) over a plain backdrop, each written on a parchment scroll. Delve enters the dungeon; the others are placeholders. Later the right side shows a picture or the game's logo, with a map-making theme.
+- **Town menu (prototype).** The game starts in town: a list of places on the left (Delve, Smith, Inn, Tavern, Shop, Alchemist, Guild hall) each written on a parchment scroll with an icon beside the name. The right side shows a big picture of a map with a ruler and compasses (a logo may replace it later). Delve enters the dungeon; the others are placeholders.
 - **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. W/S to move, Q/E to strafe, A/D to turn (hold to keep stepping), mouse to draw.
 
 ## Dungeons and generation
