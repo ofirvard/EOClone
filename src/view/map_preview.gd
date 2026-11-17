@@ -12,6 +12,7 @@ const Coords = preload("res://src/rules/coords.gd")
 const DungeonView3D = preload("res://src/view/dungeon_view_3d.gd")
 
 const SETTINGS_PATH := "res://data/generation/floor.json"
+const TOWN_SCENE := "res://scenes/main_menu.tscn"
 
 const PAPER := Color("efe4c8")
 const INK := Color("3b2f22")
@@ -42,6 +43,8 @@ var _held_key: Key = KEY_NONE
 var _hold_timer := 0.0
 
 var _settings: Dictionary
+var _delve_seed := 0                 ## Seed of the delve's first floor; deeper floors derive from it.
+var _depth := 1                      ## Which floor of the delve you're on (1 = top).
 var _grid: FloorGrid
 var _map: PlayerMap
 var _show_truth := false
@@ -71,6 +74,9 @@ var _info: Label
 var _truth_toggle: CheckButton
 var _tool_buttons: Array[Button] = []
 var _undo_button: Button
+var _deeper_prompt: Control          ## "Go deeper?" pop-up shown on reaching the trapdoor.
+var _deeper_text: Label
+var _deeper_button: Button           ## Hovers over the 3D view while you stand on the trapdoor.
 
 # Where the map was last drawn, for turning taps into cells.
 var _map_origin := Vector2.ZERO
@@ -92,6 +98,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_held_key = KEY_NONE
 		return
 
+	if _deeper_prompt.visible:
+		match key:
+			KEY_ENTER, KEY_KP_ENTER, KEY_Y:
+				_go_deeper()
+			KEY_ESCAPE, KEY_N:
+				_decline_deeper()
+		return
+
 	if key == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
 		_undo()
 		return
@@ -99,9 +113,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_SPACE, KEY_R:
 			_generate(randi())
 		KEY_RIGHT:
-			_generate(_grid.seed_value + 1)
+			_generate(_delve_seed + 1)
 		KEY_LEFT:
-			_generate(_grid.seed_value - 1)
+			_generate(_delve_seed - 1)
 		KEY_M:
 			_truth_toggle.button_pressed = not _truth_toggle.button_pressed
 		KEY_1:
@@ -149,11 +163,22 @@ func _move_key(key: Key) -> void:
 			_turn(1)
 
 
+## Starts a new delve from `seed_value`, on its first floor.
 func _generate(seed_value: int) -> void:
-	_grid = FloorGenerator.generate(seed_value, _settings)
+	_delve_seed = seed_value
+	_load_floor(1)
+
+
+## Builds floor `depth` of the current delve and puts you at its start.
+func _load_floor(depth: int) -> void:
+	_depth = depth
+	_grid = FloorGenerator.generate(FloorGenerator.floor_seed(_delve_seed, depth), _settings)
 	_drawing = false
+	_held_key = KEY_NONE
 	_map = PlayerMap.new(_grid.width, _grid.height)
-	_seed_edit.text = str(seed_value)
+	_seed_edit.text = str(_delve_seed)
+	_deeper_prompt.hide()
+	_deeper_button.hide()
 	_view_3d.build(_grid)
 	_view_cell = _grid.start
 	_facing = _open_facing(_view_cell, _grid.start_facing)
@@ -165,8 +190,8 @@ func _generate(seed_value: int) -> void:
 
 
 func _map_changed() -> void:
-	_info.text = "%d rooms  ·  explored %d / %d cells" % [
-		_grid.rooms.size(), _map.visited_count, _grid.walkable_cells().size()]
+	_info.text = "Floor %d of %d  ·  %d rooms  ·  explored %d / %d cells" % [
+		_depth, _delve_floors(), _grid.rooms.size(), _map.visited_count, _grid.walkable_cells().size()]
 	_undo_button.disabled = not _map.can_undo()
 	_canvas.queue_redraw()
 
@@ -190,12 +215,47 @@ func _step(direction: int) -> void:
 		_map.walk(_view_cell, next)
 		_view_cell = next
 		_update_viewpoint()
+		_arrived()
 
 
 func _update_viewpoint() -> void:
 	_view_3d.set_viewpoint(_view_cell, _facing)
 	_keep_in_view(_view_cell)
 	_map_changed()
+
+
+# --- Going deeper ------------------------------------------------------------
+
+## After moving: on the trapdoor, ask whether to go down; elsewhere, hide the
+## "Delve deeper" button.
+func _arrived() -> void:
+	var on_trapdoor := _view_cell == _grid.stairs_down
+	_deeper_button.hide()
+	if on_trapdoor:
+		_held_key = KEY_NONE
+		_deeper_text.text = "A trapdoor leads down.\nGo deeper?" if _depth < _delve_floors() \
+			else "This is the deepest floor.\nGo down and return to town?"
+		_deeper_prompt.show()
+	else:
+		_deeper_prompt.hide()
+
+
+## Down to the next floor, or back to town after the last one.
+func _go_deeper() -> void:
+	if _depth >= _delve_floors():
+		get_tree().change_scene_to_file(TOWN_SCENE)
+		return
+	_load_floor(_depth + 1)
+
+
+## Stay on this floor; the button keeps the way down on offer.
+func _decline_deeper() -> void:
+	_deeper_prompt.hide()
+	_deeper_button.show()
+
+
+func _delve_floors() -> int:
+	return maxi(1, int(_settings.get("delve_floors", 3)))
 
 
 ## First direction from `preferred` (clockwise) that isn't a wall.
@@ -320,6 +380,7 @@ func _jump_to(cell: Vector2i) -> void:
 		_facing = _open_facing(cell, _facing)
 		_map.visit(cell)
 		_update_viewpoint()
+		_arrived()
 
 
 ## Pencil: press to start a trace from the nearest dot, then drag. A wall is
@@ -595,11 +656,74 @@ func _build_ui() -> void:
 	container.add_child(viewport)
 	_view_3d = DungeonView3D.new()
 	viewport.add_child(_view_3d)
+	frame.add_child(_build_deeper_overlay())
 
 	var legend := _label("W/S move · Q/E strafe · A/D turn (hold to repeat)   ·   1 Move tool: tap a walked cell to jump   ·   2 Pencil: drag from dot to dot to draw walls   ·   3 Eraser: drag over walls to rub them out   ·   wheel or pinch to zoom, right-drag (or drag with Move) to pan   ·   Ctrl+Z undo   ·   M true layout   ·   Space new floor")
 	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(legend)
+
+
+## Sits over the 3D view: the "Go deeper?" pop-up in the middle and the
+## "Delve deeper" button near the bottom. Both start hidden.
+func _build_deeper_overlay() -> Control:
+	var overlay := Control.new()
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var centre := CenterContainer.new()
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(centre)
+
+	var box := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = PAPER
+	style.border_color = INK
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(20)
+	box.add_theme_stylebox_override("panel", style)
+	centre.add_child(box)
+	_deeper_prompt = box
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 16)
+	box.add_child(column)
+	_deeper_text = _label("")
+	_deeper_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_deeper_text.add_theme_font_size_override("font_size", 22)
+	column.add_child(_deeper_text)
+
+	var answers := HBoxContainer.new()
+	answers.alignment = BoxContainer.ALIGNMENT_CENTER
+	answers.add_theme_constant_override("separation", 12)
+	column.add_child(answers)
+	for entry in [["Yes", _go_deeper], ["No", _decline_deeper]]:
+		var answer := Button.new()
+		answer.text = entry[0]
+		answer.focus_mode = Control.FOCUS_NONE
+		answer.custom_minimum_size = Vector2(110, 44)
+		answer.pressed.connect(entry[1])
+		answers.add_child(answer)
+
+	_deeper_button = Button.new()
+	_deeper_button.text = "Delve deeper"
+	_deeper_button.focus_mode = Control.FOCUS_NONE
+	_deeper_button.add_theme_font_size_override("font_size", 20)
+	_deeper_button.anchor_left = 0.5
+	_deeper_button.anchor_right = 0.5
+	_deeper_button.anchor_top = 1.0
+	_deeper_button.anchor_bottom = 1.0
+	_deeper_button.offset_left = -90
+	_deeper_button.offset_right = 90
+	_deeper_button.offset_top = -72
+	_deeper_button.offset_bottom = -24
+	_deeper_button.pressed.connect(_go_deeper)
+	overlay.add_child(_deeper_button)
+
+	_deeper_prompt.hide()
+	_deeper_button.hide()
+	return overlay
 
 
 ## A toggle button for `which`, stored in _tool_buttons at index `which`.

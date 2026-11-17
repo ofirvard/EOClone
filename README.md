@@ -17,7 +17,8 @@ Phase 1 (map making) of the [plan](docs/plan.md): a seeded floor, a first-person
 
 Open the folder in Godot 4.7 (Import → select `project.godot`) and press F5. The game opens on the town menu; pick **Delve** to enter a dungeon (the other places do nothing yet). The map on the left fills in only the cells you've stepped on; the 3D window on the right looks from the blue marker. Turn on **True layout** (or press M) to see the whole generated floor.
 
-- Type a seed and press Go to view that floor. Space generates a new floor; ←/→ step to the previous or next seed.
+- Type a seed and press Go to start a delve from it. Space starts a new delve; ←/→ step to the previous or next seed.
+- Step onto the trapdoor to go deeper (it asks first; say No and a **Delve deeper** button stays up while you stand there). A delve is 3 floors; the last trapdoor returns you to town.
 - W/S move, Q/E strafe, A/D turn. Hold a key to keep going, one step at a time.
 - **Pencil** (2, the default; right of the map): walls are bold lines on the edges between cells. Press and drag: a trace follows the pointer's path from the nearest grid dot (cell corner), and a wall is placed only when the trace reaches another dot in the same row or column. Keep dragging to chain walls. You can't draw a wall across a step you've walked.
 - **Eraser** (3, right of the map): drag over walls to rub them out; a red circle shows what it will rub out.

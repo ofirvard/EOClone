@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS := {
 	"extra_connections": 2,
 	"torch_density": 0.04,   ## Torches per open cell.
 	"torch_spacing": 4,      ## Fewest cells between two torches (along either axis).
+	"delve_floors": 3,       ## Floors in one delve; the last trapdoor leads back to town.
 }
 
 
@@ -37,6 +38,15 @@ static func load_settings(path: String) -> Dictionary:
 		else:
 			push_warning("Could not parse %s, using default floor settings" % path)
 	return settings
+
+
+## Seed for floor `depth` (1 = first) of a delve that starts from
+## `delve_seed`. The first floor uses the delve seed itself, so a delve's
+## floors are the same every time.
+static func floor_seed(delve_seed: int, depth: int) -> int:
+	if depth <= 1:
+		return delve_seed
+	return hash([delve_seed, depth])
 
 
 static func generate(seed_value: int, settings: Dictionary = DEFAULT_SETTINGS) -> FloorGrid:

@@ -19,6 +19,7 @@ func _init() -> void:
 	test_same_seed_same_floor(settings)
 	test_different_seeds_differ(settings)
 	test_max_size(settings)
+	test_floor_seeds()
 	for seed_value in SEEDS:
 		check_floor(FloorGenerator.generate(seed_value, settings))
 	test_edges()
@@ -45,6 +46,16 @@ func test_max_size(settings: Dictionary) -> void:
 	big["height"] = 99
 	var grid := FloorGenerator.generate(5, big)
 	expect(grid.width == FloorGenerator.MAX_SIZE and grid.height == FloorGenerator.MAX_SIZE, "floors are never bigger than 26 x 26")
+
+
+func test_floor_seeds() -> void:
+	expect(FloorGenerator.floor_seed(42, 1) == 42, "a delve's first floor uses the delve seed")
+	expect(FloorGenerator.floor_seed(42, 2) == FloorGenerator.floor_seed(42, 2), "deeper floor seeds repeat")
+	var seen := {}
+	for depth in range(1, 4):
+		seen[FloorGenerator.floor_seed(42, depth)] = true
+	expect(seen.size() == 3, "each floor of a delve has its own seed")
+	expect(FloorGenerator.floor_seed(42, 2) != FloorGenerator.floor_seed(43, 2), "different delves get different deeper floors")
 
 
 func test_different_seeds_differ(settings: Dictionary) -> void:

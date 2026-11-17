@@ -27,7 +27,8 @@ Walk a generated floor in first person and draw the map by hand. Built and teste
 - [x] True layout view that marks wrong walls
 - [ ] Map icons: stairs, treasure, trap, camp, gather point, enemy, note (defined in a data file)
 - [x] Stairs on each floor: stairs up set into a wall beside the start, a trapdoor down in another random room (scenery only so far)
-- [ ] Several floors joined by the stairs, each with its own map
+- [x] Trapdoor takes you down a floor (asks first); a delve is 3 floors, then back to town
+- [ ] Each floor keeps its own map, and stairs up take you back up
 - [ ] Basic accuracy score when you leave a floor
 - [ ] Save and load a run (seed plus your map)
 
