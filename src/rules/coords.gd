@@ -21,3 +21,8 @@ static func row_name(y: int) -> String:
 
 static func cell_name(p: Vector2i) -> String:
 	return column_name(p.x) + row_name(p.y)
+
+
+## Floors count down below town: depth 1 is "-1", depth 2 is "-2".
+static func floor_name(depth: int) -> String:
+	return str(-depth)

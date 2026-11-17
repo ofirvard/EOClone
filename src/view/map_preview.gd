@@ -44,7 +44,8 @@ var _hold_timer := 0.0
 
 var _settings: Dictionary
 var _delve_seed := 0                 ## Seed of the delve's first floor; deeper floors derive from it.
-var _depth := 1                      ## Which floor of the delve you're on (1 = top).
+var _depth := 1                      ## Which floor of the delve you're on (1 = top, shown as -1).
+var _maps := {}                      ## Depth -> PlayerMap: each floor keeps the map you drew.
 var _grid: FloorGrid
 var _map: PlayerMap
 var _show_truth := false
@@ -74,9 +75,11 @@ var _info: Label
 var _truth_toggle: CheckButton
 var _tool_buttons: Array[Button] = []
 var _undo_button: Button
-var _deeper_prompt: Control          ## "Go deeper?" pop-up shown on reaching the trapdoor.
-var _deeper_text: Label
+var _prompt: Control                 ## Yes/no pop-up over the 3D view ("Go deeper?", "Go up?").
+var _prompt_text: Label
+var _prompt_yes := Callable()        ## What Yes does.
 var _deeper_button: Button           ## Hovers over the 3D view while you stand on the trapdoor.
+var _up_button: Button               ## Hovers over the 3D view while you stand at the stairs up.
 
 # Where the map was last drawn, for turning taps into cells.
 var _map_origin := Vector2.ZERO
@@ -98,12 +101,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_held_key = KEY_NONE
 		return
 
-	if _deeper_prompt.visible:
+	if _prompt.visible:
 		match key:
 			KEY_ENTER, KEY_KP_ENTER, KEY_Y:
-				_go_deeper()
+				_answer(true)
 			KEY_ESCAPE, KEY_N:
-				_decline_deeper()
+				_answer(false)
 		return
 
 	if key == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
@@ -163,35 +166,45 @@ func _move_key(key: Key) -> void:
 			_turn(1)
 
 
-## Starts a new delve from `seed_value`, on its first floor.
+## Starts a new delve from `seed_value`, on its first floor, with blank maps.
 func _generate(seed_value: int) -> void:
 	_delve_seed = seed_value
+	_maps.clear()
 	_load_floor(1)
 
 
-## Builds floor `depth` of the current delve and puts you at its start.
-func _load_floor(depth: int) -> void:
+## Builds floor `depth` of the current delve. Coming down, you arrive in front
+## of its stairs up; coming up from below, on its trapdoor. Each floor keeps
+## the map you drew there.
+func _load_floor(depth: int, from_below: bool = false) -> void:
+	_end_stroke()
 	_depth = depth
 	_grid = FloorGenerator.generate(FloorGenerator.floor_seed(_delve_seed, depth), _settings)
 	_drawing = false
 	_held_key = KEY_NONE
-	_map = PlayerMap.new(_grid.width, _grid.height)
+	if not _maps.has(depth):
+		_maps[depth] = PlayerMap.new(_grid.width, _grid.height)
+	_map = _maps[depth]
 	_seed_edit.text = str(_delve_seed)
-	_deeper_prompt.hide()
-	_deeper_button.hide()
+	_prompt.hide()
 	_view_3d.build(_grid)
-	_view_cell = _grid.start
-	_facing = _open_facing(_view_cell, _grid.start_facing)
+	if from_below and _grid.in_bounds(_grid.stairs_down):
+		_view_cell = _grid.stairs_down
+		_facing = _open_facing(_view_cell, 0)
+	else:
+		_view_cell = _grid.start
+		_facing = _open_facing(_view_cell, _grid.start_facing)
 	_map.visit(_view_cell)
 	_view_3d.set_viewpoint(_view_cell, _facing, false)
 	_zoom = 1.0
 	_pan = Vector2.ZERO
+	_update_floor_buttons()
 	_map_changed()
 
 
 func _map_changed() -> void:
-	_info.text = "Floor %d of %d  ·  %d rooms  ·  explored %d / %d cells" % [
-		_depth, _delve_floors(), _grid.rooms.size(), _map.visited_count, _grid.walkable_cells().size()]
+	_info.text = "Floor %s  ·  %d rooms  ·  explored %d / %d cells" % [
+		Coords.floor_name(_depth), _grid.rooms.size(), _map.visited_count, _grid.walkable_cells().size()]
 	_undo_button.disabled = not _map.can_undo()
 	_canvas.queue_redraw()
 
@@ -211,7 +224,9 @@ func _turn(amount: int) -> void:
 
 func _step(direction: int) -> void:
 	var next := _view_cell + FloorGrid.DIRECTIONS[direction]
-	if _grid.is_walkable(next):
+	if next == _grid.stairs_up and _at_stairs_up():
+		_ask_up()
+	elif _grid.is_walkable(next):
 		_map.walk(_view_cell, next)
 		_view_cell = next
 		_update_viewpoint()
@@ -224,20 +239,56 @@ func _update_viewpoint() -> void:
 	_map_changed()
 
 
-# --- Going deeper ------------------------------------------------------------
+# --- Going up and down ------------------------------------------------------
 
-## After moving: on the trapdoor, ask whether to go down; elsewhere, hide the
-## "Delve deeper" button.
+## After moving: stepping onto the trapdoor asks whether to go down.
 func _arrived() -> void:
-	var on_trapdoor := _view_cell == _grid.stairs_down
-	_deeper_button.hide()
-	if on_trapdoor:
-		_held_key = KEY_NONE
-		_deeper_text.text = "A trapdoor leads down.\nGo deeper?" if _depth < _delve_floors() \
-			else "This is the deepest floor.\nGo down and return to town?"
-		_deeper_prompt.show()
+	if _view_cell == _grid.stairs_down:
+		var text := "A trapdoor leads down to floor %s.\nGo deeper?" % Coords.floor_name(_depth + 1)
+		if _depth >= _delve_floors():
+			text = "This is the deepest floor.\nGo down and return to town?"
+		_ask(text, _go_deeper)
 	else:
-		_deeper_prompt.hide()
+		_prompt.hide()
+		_update_floor_buttons()
+
+
+## Walking into the stairs up asks whether to climb them.
+func _ask_up() -> void:
+	var text := "Stairs lead up to floor %s.\nGo up?" % Coords.floor_name(_depth - 1)
+	if _depth <= 1:
+		text = "Stairs lead up to town.\nLeave the dungeon?"
+	_ask(text, _go_up)
+
+
+## Shows the yes/no pop-up; Yes runs `on_yes`. Movement stops while it's open.
+func _ask(text: String, on_yes: Callable) -> void:
+	_held_key = KEY_NONE
+	_prompt_text.text = text
+	_prompt_yes = on_yes
+	_prompt.show()
+	_update_floor_buttons()
+
+
+func _answer(yes: bool) -> void:
+	_prompt.hide()
+	if yes:
+		_prompt_yes.call()
+	else:
+		_update_floor_buttons()
+
+
+## The hovering buttons: "Delve deeper" on the trapdoor, "Go up" in front of
+## the stairs up. Hidden while the pop-up is open.
+func _update_floor_buttons() -> void:
+	_deeper_button.visible = not _prompt.visible and _view_cell == _grid.stairs_down
+	_up_button.visible = not _prompt.visible and _at_stairs_up()
+
+
+## True when you stand on the cell the stairs up open onto.
+func _at_stairs_up() -> bool:
+	return _grid.in_bounds(_grid.stairs_up) \
+		and _view_cell == _grid.stairs_up + FloorGrid.DIRECTIONS[_grid.stairs_up_side]
 
 
 ## Down to the next floor, or back to town after the last one.
@@ -248,10 +299,12 @@ func _go_deeper() -> void:
 	_load_floor(_depth + 1)
 
 
-## Stay on this floor; the button keeps the way down on offer.
-func _decline_deeper() -> void:
-	_deeper_prompt.hide()
-	_deeper_button.show()
+## Up to the floor above (arriving on its trapdoor), or out to town from -1.
+func _go_up() -> void:
+	if _depth <= 1:
+		get_tree().change_scene_to_file(TOWN_SCENE)
+		return
+	_load_floor(_depth - 1, true)
 
 
 func _delve_floors() -> int:
@@ -621,6 +674,24 @@ func _build_ui() -> void:
 	map_row.add_theme_constant_override("separation", 8)
 	map_pane.add_child(map_row)
 
+	# Toolbox: a box left of the map with the drawing tools. Map icons will
+	# join it as the things they mark are added.
+	var toolbox := PanelContainer.new()
+	var toolbox_style := StyleBoxFlat.new()
+	toolbox_style.bg_color = UNKNOWN
+	toolbox_style.border_color = INK
+	toolbox_style.set_border_width_all(2)
+	toolbox_style.set_corner_radius_all(4)
+	toolbox_style.set_content_margin_all(8)
+	toolbox.add_theme_stylebox_override("panel", toolbox_style)
+	map_row.add_child(toolbox)
+	var draw_tools := VBoxContainer.new()
+	draw_tools.add_theme_constant_override("separation", 6)
+	toolbox.add_child(draw_tools)
+	draw_tools.add_child(_tool_button(Tool.PENCIL, "Pencil", group))
+	draw_tools.add_child(_tool_button(Tool.ERASER, "Eraser", group))
+	_tool_buttons[_tool].button_pressed = true
+
 	_canvas = Control.new()
 	_canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -630,14 +701,6 @@ func _build_ui() -> void:
 	_canvas.resized.connect(_canvas.queue_redraw)
 	_canvas.gui_input.connect(_on_canvas_input)
 	map_row.add_child(_canvas)
-
-	# Drawing tools, in a column on the right side of the map.
-	var draw_tools := VBoxContainer.new()
-	draw_tools.add_theme_constant_override("separation", 6)
-	map_row.add_child(draw_tools)
-	draw_tools.add_child(_tool_button(Tool.PENCIL, "Pencil", group))
-	draw_tools.add_child(_tool_button(Tool.ERASER, "Eraser", group))
-	_tool_buttons[_tool].button_pressed = true
 
 	var frame := PanelContainer.new()
 	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -656,7 +719,7 @@ func _build_ui() -> void:
 	container.add_child(viewport)
 	_view_3d = DungeonView3D.new()
 	viewport.add_child(_view_3d)
-	frame.add_child(_build_deeper_overlay())
+	frame.add_child(_build_floor_overlay())
 
 	var legend := _label("W/S move · Q/E strafe · A/D turn (hold to repeat)   ·   1 Move tool: tap a walked cell to jump   ·   2 Pencil: drag from dot to dot to draw walls   ·   3 Eraser: drag over walls to rub them out   ·   wheel or pinch to zoom, right-drag (or drag with Move) to pan   ·   Ctrl+Z undo   ·   M true layout   ·   Space new floor")
 	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -664,9 +727,9 @@ func _build_ui() -> void:
 	column.add_child(legend)
 
 
-## Sits over the 3D view: the "Go deeper?" pop-up in the middle and the
-## "Delve deeper" button near the bottom. Both start hidden.
-func _build_deeper_overlay() -> Control:
+## Sits over the 3D view: the yes/no pop-up in the middle, and the
+## "Delve deeper" and "Go up" buttons near the bottom. All start hidden.
+func _build_floor_overlay() -> Control:
 	var overlay := Control.new()
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -684,46 +747,57 @@ func _build_deeper_overlay() -> Control:
 	style.set_content_margin_all(20)
 	box.add_theme_stylebox_override("panel", style)
 	centre.add_child(box)
-	_deeper_prompt = box
+	_prompt = box
 
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 16)
 	box.add_child(column)
-	_deeper_text = _label("")
-	_deeper_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_deeper_text.add_theme_font_size_override("font_size", 22)
-	column.add_child(_deeper_text)
+	_prompt_text = _label("")
+	_prompt_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_text.add_theme_font_size_override("font_size", 22)
+	column.add_child(_prompt_text)
 
 	var answers := HBoxContainer.new()
 	answers.alignment = BoxContainer.ALIGNMENT_CENTER
 	answers.add_theme_constant_override("separation", 12)
 	column.add_child(answers)
-	for entry in [["Yes", _go_deeper], ["No", _decline_deeper]]:
+	for entry in [["Yes", true], ["No", false]]:
 		var answer := Button.new()
 		answer.text = entry[0]
 		answer.focus_mode = Control.FOCUS_NONE
 		answer.custom_minimum_size = Vector2(110, 44)
-		answer.pressed.connect(entry[1])
+		var yes: bool = entry[1]
+		answer.pressed.connect(func(): _answer(yes))
 		answers.add_child(answer)
 
-	_deeper_button = Button.new()
-	_deeper_button.text = "Delve deeper"
-	_deeper_button.focus_mode = Control.FOCUS_NONE
-	_deeper_button.add_theme_font_size_override("font_size", 20)
-	_deeper_button.anchor_left = 0.5
-	_deeper_button.anchor_right = 0.5
-	_deeper_button.anchor_top = 1.0
-	_deeper_button.anchor_bottom = 1.0
-	_deeper_button.offset_left = -90
-	_deeper_button.offset_right = 90
-	_deeper_button.offset_top = -72
-	_deeper_button.offset_bottom = -24
-	_deeper_button.pressed.connect(_go_deeper)
+	# The two never show at once (the trapdoor is in another room), so they
+	# share a spot.
+	_deeper_button = _hover_button("Delve deeper", _go_deeper)
 	overlay.add_child(_deeper_button)
+	_up_button = _hover_button("Go up", _go_up)
+	overlay.add_child(_up_button)
 
-	_deeper_prompt.hide()
-	_deeper_button.hide()
+	_prompt.hide()
 	return overlay
+
+
+## A button floating near the bottom middle of the 3D view, hidden at first.
+func _hover_button(text: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 20)
+	button.anchor_left = 0.5
+	button.anchor_right = 0.5
+	button.anchor_top = 1.0
+	button.anchor_bottom = 1.0
+	button.offset_left = -90
+	button.offset_right = 90
+	button.offset_top = -72
+	button.offset_bottom = -24
+	button.pressed.connect(action)
+	button.hide()
+	return button
 
 
 ## A toggle button for `which`, stored in _tool_buttons at index `which`.

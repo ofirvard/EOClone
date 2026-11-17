@@ -6,7 +6,7 @@ The build order for the game, in eight phases. Each phase ends with something pl
 
 | Phase | Focus | Playable at the end |
 |---|---|---|
-| 1 | Map making | Explore a floor and chart it by hand |
+| 1 | Map making | Explore a floor and chart it by hand (done) |
 | 2 | Combat and monsters (basic) | Fights with pre-fight orders while exploring |
 | 3 | Loot and crafting | Bring back materials and unlock gear |
 | 4 | Map making (advanced) | Survey tools, secrets, map checking that matters |
@@ -15,7 +15,7 @@ The build order for the game, in eight phases. Each phase ends with something pl
 | 7 | City building | Grow the guild's town between expeditions |
 | 8 | Phone | The full game on Android and iOS, built for touch |
 
-## Phase 1: Map making
+## Phase 1: Map making (done)
 
 Walk a generated floor in first person and draw the map by hand. Built and tested on PC first; phone comes in phase 8, but the map code keeps touch in mind (big targets, pinch zoom).
 
@@ -25,14 +25,12 @@ Walk a generated floor in first person and draw the map by hand. Built and teste
 - [x] Walls drawn dot to dot on cell edges, with trace, erase and undo
 - [x] Zoom and pan (wheel, pinch, buttons, drag)
 - [x] True layout view that marks wrong walls
-- [ ] Map icons: stairs, treasure, trap, camp, gather point, enemy, note (defined in a data file)
+- [x] Toolbox in a box left of the map, holding the Pencil and Eraser. Map icons join it as needed, as the things they mark are added (not all at once)
 - [x] Stairs on each floor: stairs up set into a wall beside the start, a trapdoor down in another random room (scenery only so far)
 - [x] Trapdoor takes you down a floor (asks first); a delve is 3 floors, then back to town
-- [ ] Each floor keeps its own map, and stairs up take you back up
-- [ ] Basic accuracy score when you leave a floor
-- [ ] Save and load a run (seed plus your map)
+- [x] Each floor keeps its own map, and stairs up take you back up (floors are numbered -1, -2, -3)
 
-**Done when:** you can chart a few floors on PC, and the score says how good your map is.
+**Done when:** you can chart a few floors on PC, going down and back up, with a map for each.
 
 ## Phase 2: Combat and monsters (basic)
 
@@ -45,6 +43,7 @@ Encounters while exploring, settled by orders you give before the fight.
 - HP, fatigue and supplies that carry through a run, so going deeper is a risk
 - Return to town to heal; a wiped party loses the run's map
 - Marked enemies on the map tell you what you'll face
+- Save and load a run (seed plus your maps)
 
 **Done when:** a run is a tense trip down and back, and orders matter.
 

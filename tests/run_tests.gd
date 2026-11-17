@@ -164,6 +164,7 @@ func test_coords() -> void:
 	expect(Coords.column_name(701) == "ZZ" and Coords.column_name(702) == "AAA", "columns roll over like a spreadsheet")
 	expect(Coords.row_name(0) == "1" and Coords.row_name(31) == "32", "rows are numbered from 1")
 	expect(Coords.cell_name(Vector2i(2, 4)) == "C5", "a cell reads as column then row")
+	expect(Coords.floor_name(1) == "-1" and Coords.floor_name(3) == "-3", "floors are numbered -1, -2, -3")
 
 
 func test_true_walls() -> void:
