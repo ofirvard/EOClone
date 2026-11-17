@@ -54,6 +54,7 @@ Dungeons are randomly generated, but built from hand-made pieces so every floor 
 - **Templates, not pure noise.** Fully random mazes are boring to map. Generate floors from hand-made rooms and set pieces: puzzles, landmarks, one-way doors, dead ends that hide something.
 - **Floor size.** A floor is at most 26 × 26 cells, so map columns run A to Z.
 - **Stairs.** Stairs up are set into a wall: the party starts on the floor in front of them, facing into the room, as if just arrived from above. The way down is a trapdoor in the floor of another random room. In the 3D view the stairs are a picture on the wall and the trapdoor a picture on the floor; the theme file picks both. In the prototype they're scenery: using them comes with multiple floors.
+- **Wall torches.** Animated torches hang on random walls, spread a few cells apart, each lighting the area around it with a flickering light that stops at walls. How many and how far apart is set in the floor settings; the art comes from the theme.
 - **Premade floors mixed in (idea).** Now and then a whole hand-made floor appears among the generated ones, as a landmark or a puzzle floor.
 - **Seeded and persistent.** Each dungeon comes from a seed and stays the same, so your map stays useful across runs and contracts send you deeper over time.
 - **Shifting zones (maybe).** A few deep areas could change between runs, giving you a reason to come back and re-map.

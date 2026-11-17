@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS := {
 	"room_min_size": 3,
 	"room_max_size": 7,
 	"extra_connections": 2,
+	"torch_density": 0.04,   ## Torches per open cell.
+	"torch_spacing": 4,      ## Fewest cells between two torches (along either axis).
 }
 
 
@@ -50,6 +52,7 @@ static func generate(seed_value: int, settings: Dictionary = DEFAULT_SETTINGS) -
 	_place_rooms(grid, rng, settings)
 	_connect_rooms(grid, rng, int(settings["extra_connections"]))
 	_place_stairs(grid, rng)
+	_place_torches(grid, rng, float(settings["torch_density"]), int(settings["torch_spacing"]))
 	return grid
 
 
@@ -165,6 +168,35 @@ static func _place_stairs(grid: FloorGrid, rng: RandomNumberGenerator) -> void:
 		down_room += 1
 	grid.stairs_down = _center(grid.rooms[down_room])
 	grid.set_cell(grid.stairs_down, FloorGrid.Cell.STAIRS_DOWN)
+
+
+## Hangs torches on random wall faces (plain rock only, not the stairs),
+## keeping them spread out: no two closer than `spacing` cells.
+static func _place_torches(grid: FloorGrid, rng: RandomNumberGenerator, density: float, spacing: int) -> void:
+	var spots: Array[Vector3i] = []
+	for p in grid.walkable_cells():
+		for side in 4:
+			var q := p + FloorGrid.DIRECTIONS[side]
+			if grid.in_bounds(q) and grid.get_cell(q) == FloorGrid.Cell.WALL:
+				spots.append(Vector3i(p.x, p.y, side))
+	# Shuffle with the floor's own generator so the same seed gives the same torches.
+	for i in range(spots.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var swap := spots[i]
+		spots[i] = spots[j]
+		spots[j] = swap
+
+	var wanted := roundi(grid.walkable_cells().size() * density)
+	for spot in spots:
+		if grid.torches.size() >= wanted:
+			break
+		var crowded := false
+		for other in grid.torches:
+			if maxi(absi(spot.x - other.x), absi(spot.y - other.y)) < spacing:
+				crowded = true
+				break
+		if not crowded:
+			grid.torches.append(spot)
 
 
 static func _center(rect: Rect2i) -> Vector2i:

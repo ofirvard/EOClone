@@ -18,6 +18,9 @@ var start_facing := 0           ## Index into DIRECTIONS the party faces at the 
 var stairs_up := Vector2i(-1, -1)
 var stairs_up_side := 0         ## DIRECTIONS index from stairs_up toward the open cell it faces.
 var stairs_down := Vector2i(-1, -1)
+## Wall torches as Vector3i(x, y, side): hung on the wall on DIRECTIONS[side]
+## of open cell (x, y).
+var torches: Array[Vector3i] = []
 
 
 func _init(w: int, h: int) -> void:

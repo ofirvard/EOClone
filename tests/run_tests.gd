@@ -36,6 +36,7 @@ func test_same_seed_same_floor(settings: Dictionary) -> void:
 		var a := FloorGenerator.generate(seed_value, settings)
 		var b := FloorGenerator.generate(seed_value, settings)
 		expect(a.cells == b.cells, "seed %d gives the same floor twice" % seed_value)
+		expect(a.torches == b.torches, "seed %d gives the same torches twice" % seed_value)
 
 
 func test_max_size(settings: Dictionary) -> void:
@@ -93,6 +94,18 @@ func check_floor(grid: FloorGrid) -> void:
 		counts[c] = counts.get(c, 0) + 1
 	expect(counts.get(FloorGrid.Cell.STAIRS_UP, 0) == 1 and counts.get(FloorGrid.Cell.STAIRS_DOWN, 0) == 1,
 		"%s has exactly one of each stairs" % tag)
+
+	# Torches: on open floor, against plain rock, spread out, and some exist.
+	var torches_ok := grid.torches.size() > 0
+	for i in grid.torches.size():
+		var t := grid.torches[i]
+		var cell := Vector2i(t.x, t.y)
+		var behind := cell + FloorGrid.DIRECTIONS[t.z]
+		torches_ok = torches_ok and grid.is_walkable(cell) and grid.in_bounds(behind) 			and grid.get_cell(behind) == FloorGrid.Cell.WALL
+		for j in i:
+			var o := grid.torches[j]
+			torches_ok = torches_ok and maxi(absi(t.x - o.x), absi(t.y - o.y)) >= 4
+	expect(torches_ok, "%s has torches on rock walls, spread out" % tag)
 
 
 func test_footsteps() -> void:

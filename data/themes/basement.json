@@ -7,5 +7,15 @@
 	"floor": { "texture": "res://assets/textures/basement/stone_floor_2.png" },
 	"ceiling": { "texture": "res://assets/textures/basement/stone_floor_2.png", "tint": "6a635a" },
 	"stairs_up": { "texture": "res://assets/textures/basement/stairs_1.png" },
-	"stairs_down": { "texture": "res://assets/textures/basement/basement_door_2.png" }
+	"stairs_down": { "texture": "res://assets/textures/basement/basement_door_2.png" },
+	"torch": {
+		"frames": [
+			"res://assets/textures/castle/torch_1.png",
+			"res://assets/textures/castle/torch_2.png",
+			"res://assets/textures/castle/torch_3.png",
+			"res://assets/textures/castle/torch_4.png"
+		],
+		"fps": 7,
+		"light": { "color": "ffad5c", "energy": 1.6, "range": 5.0 }
+	}
 }

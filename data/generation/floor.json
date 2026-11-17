@@ -5,5 +5,7 @@
 	"max_rooms": 10,
 	"room_min_size": 3,
 	"room_max_size": 7,
-	"extra_connections": 2
+	"extra_connections": 2,
+	"torch_density": 0.04,
+	"torch_spacing": 4
 }

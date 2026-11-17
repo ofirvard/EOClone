@@ -1,9 +1,14 @@
 extends Node3D
 ## First-person 3D view of a floor. Walls come from a GridMap built from the
-## rules grid; floor and ceiling are one plane each. A torch light rides on
-## the camera and fog hides the distance, so only nearby walls read clearly.
-## Textures come from a theme file in data/themes/. Stairs up are a picture on
-## one face of a wall block; the trapdoor down is a picture lying on the floor.
+## rules grid. A torch light rides on the camera and fog hides the distance,
+## so only nearby walls read clearly. Textures come from a theme file in
+## data/themes/. Stairs up are a picture on one face of a wall block; the
+## trapdoor down is a picture lying on the floor. Wall torches are animated
+## pictures, each with a flickering light.
+##
+## Floor and ceiling are tiled per cell (in their own GridMap) rather than one
+## big plane: the Mobile renderer lights each mesh with at most 8 lights, and
+## small chunks keep that to the torches nearby.
 
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 
@@ -14,11 +19,15 @@ const TURN_TIME := 0.15
 const THEME_PATH := "res://data/themes/basement.json"
 const DECAL_LIFT := 0.01     ## Gap that keeps a picture from flickering into the surface under it.
 const TRAPDOOR_SIZE := 0.9   ## Share of the cell the trapdoor picture spans.
+const TORCH_SIZE := 1.0      ## Torch picture width and height, in metres.
+const TORCH_HEIGHT := 1.25   ## Height of the torch picture's centre.
+const FLAME_HEIGHT := 1.45   ## Where the torch's light sits.
+const FLAME_OUT := 0.3       ## How far the light sits out from the wall.
+const CHUNK := 4             ## GridMap octant size in cells (see the note above).
 
 
 var _gridmap: GridMap
-var _floor: MeshInstance3D
-var _ceiling: MeshInstance3D
+var _floor_map: GridMap      ## One floor-and-ceiling tile per open cell.
 var _camera: Camera3D
 var _tween: Tween
 var _floor_mat: StandardMaterial3D
@@ -26,7 +35,13 @@ var _ceiling_mat: StandardMaterial3D
 var _wall_weights: Array[int] = []
 var _stairs_up_mat: StandardMaterial3D
 var _stairs_down_mat: StandardMaterial3D
-var _props: Node3D           ## Stairs and trapdoor pictures; rebuilt with each floor.
+var _props: Node3D           ## Stairs, trapdoor and torches; rebuilt with each floor.
+var _torch_frames: Array[StandardMaterial3D] = []
+var _torch_fps := 7.0
+var _torch_light := {}
+var _torches: Array[MeshInstance3D] = []
+var _torch_lights: Array[OmniLight3D] = []
+var _clock := 0.0
 
 
 func _init() -> void:
@@ -44,19 +59,23 @@ func _init() -> void:
 		_stairs_up_mat = _decal_material(theme["stairs_up"])
 	if theme.has("stairs_down"):
 		_stairs_down_mat = _decal_material(theme["stairs_down"])
+	if theme.has("torch"):
+		for path in theme["torch"].get("frames", []):
+			_torch_frames.append(_glow_material(path))
+		_torch_fps = float(theme["torch"].get("fps", 7))
+		_torch_light = theme["torch"].get("light", {})
 
 	_gridmap = GridMap.new()
 	_gridmap.cell_size = Vector3(CELL, WALL_HEIGHT, CELL)
 	_gridmap.mesh_library = _build_library(wall_mats)
+	_gridmap.cell_octant_size = CHUNK
 	add_child(_gridmap)
 
-	_floor = MeshInstance3D.new()
-	_floor.material_override = _floor_mat
-	add_child(_floor)
-
-	_ceiling = MeshInstance3D.new()
-	_ceiling.material_override = _ceiling_mat
-	add_child(_ceiling)
+	_floor_map = GridMap.new()
+	_floor_map.cell_size = Vector3(CELL, WALL_HEIGHT, CELL)
+	_floor_map.cell_octant_size = CHUNK
+	_floor_map.mesh_library = _floor_library()
+	add_child(_floor_map)
 
 	_props = Node3D.new()
 	add_child(_props)
@@ -97,24 +116,63 @@ func build(grid: FloorGrid) -> void:
 			if not grid.is_walkable(Vector2i(x, y)):
 				_gridmap.set_cell_item(Vector3i(x, 0, y), _wall_variant(x, y, grid.seed_value))
 
-	var extent := Vector2(grid.width, grid.height) * CELL
-	var floor_mesh := PlaneMesh.new()
-	floor_mesh.size = extent
-	_floor.mesh = floor_mesh
-	_floor.position = Vector3(extent.x / 2, 0, extent.y / 2)
-	# Plane UVs run 0..1 across the whole floor; repeat the texture once per cell.
-	if not (_floor_mat.albedo_texture is NoiseTexture2D):
-		_floor_mat.uv1_scale = Vector3(grid.width, grid.height, 1)
-	if not (_ceiling_mat.albedo_texture is NoiseTexture2D):
-		_ceiling_mat.uv1_scale = Vector3(grid.width, grid.height, 1)
-
-	var ceiling_mesh := PlaneMesh.new()
-	ceiling_mesh.size = extent
-	ceiling_mesh.flip_faces = true
-	_ceiling.mesh = ceiling_mesh
-	_ceiling.position = Vector3(extent.x / 2, WALL_HEIGHT, extent.y / 2)
+	_floor_map.clear()
+	for p in grid.walkable_cells():
+		_floor_map.set_cell_item(Vector3i(p.x, 0, p.y), 0)
 
 	_build_props(grid)
+	_build_torches(grid)
+
+
+## Swaps torch frames and flickers their lights.
+func _process(delta: float) -> void:
+	if _torches.is_empty():
+		return
+	_clock += delta
+	var frame := int(_clock * _torch_fps)
+	var base := float(_torch_light.get("energy", 1.6))
+	for i in _torches.size():
+		# Each torch starts on its own frame and flickers on its own rhythm.
+		_torches[i].material_override = _torch_frames[(frame + i) % _torch_frames.size()]
+		var t := _clock * 9.0 + i * 1.7
+		_torch_lights[i].light_energy = base * (0.85 + 0.1 * sin(t) + 0.05 * sin(t * 2.3))
+
+
+## A torch picture on the wall behind each torch spot, with a warm light just
+## in front of its flame.
+func _build_torches(grid: FloorGrid) -> void:
+	_torches.clear()
+	_torch_lights.clear()
+	if _torch_frames.is_empty():
+		return
+	var quad := QuadMesh.new()
+	quad.size = Vector2(TORCH_SIZE, TORCH_SIZE)
+	for spot in grid.torches:
+		var side := FloorGrid.DIRECTIONS[spot.z]
+		var toward_wall := Vector3(side.x, 0, side.y)
+		var cell := Vector2i(spot.x, spot.y)
+
+		var torch := MeshInstance3D.new()
+		torch.mesh = quad
+		torch.material_override = _torch_frames[0]
+		torch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Face back into the cell, flat on the wall.
+		torch.rotation.y = atan2(-side.x, -side.y)
+		torch.position = _cell_centre(cell, TORCH_HEIGHT) + toward_wall * (CELL / 2.0 - DECAL_LIFT)
+		_props.add_child(torch)
+		_torches.append(torch)
+
+		var light := OmniLight3D.new()
+		light.light_color = Color(_torch_light.get("color", "ffad5c"))
+		light.light_energy = float(_torch_light.get("energy", 1.6))
+		light.omni_range = float(_torch_light.get("range", 5.0))
+		light.omni_attenuation = 1.4
+		# Shadows stop the light at walls instead of shining through into the
+		# room behind. The scene never moves, so each shadow is drawn once.
+		light.shadow_enabled = true
+		light.position = _cell_centre(cell, FLAME_HEIGHT) + toward_wall * (CELL / 2.0 - FLAME_OUT)
+		_props.add_child(light)
+		_torch_lights.append(light)
 
 
 ## The stairs picture on the wall face toward the room, and the trapdoor
@@ -130,6 +188,7 @@ func _build_props(grid: FloorGrid) -> void:
 		var stairs := MeshInstance3D.new()
 		stairs.mesh = quad
 		stairs.material_override = _stairs_up_mat
+		stairs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# A quad faces +Z; turn it to face the open cell, on the wall's surface.
 		stairs.rotation.y = atan2(side.x, side.y)
 		stairs.position = _cell_centre(grid.stairs_up, WALL_HEIGHT / 2.0) 			+ Vector3(side.x, 0, side.y) * (CELL / 2.0 + DECAL_LIFT)
@@ -143,6 +202,7 @@ func _build_props(grid: FloorGrid) -> void:
 		var trapdoor := MeshInstance3D.new()
 		trapdoor.mesh = plane
 		trapdoor.material_override = _stairs_down_mat
+		trapdoor.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		trapdoor.position = _cell_centre(grid.stairs_down, DECAL_LIFT)
 		_props.add_child(trapdoor)
 
@@ -188,6 +248,29 @@ func _wall_variant(x: int, y: int, seed_value: int) -> int:
 		if roll < 0:
 			return i
 	return 0
+
+
+## One tile: a floor square and the ceiling square above it, each with the
+## texture once. Items sit at the cell's middle height, hence the offsets.
+func _floor_library() -> MeshLibrary:
+	var tile := ArrayMesh.new()
+	var floor_plane := PlaneMesh.new()
+	floor_plane.size = Vector2(CELL, CELL)
+	floor_plane.center_offset = Vector3(0, -WALL_HEIGHT / 2.0, 0)
+	var ceiling_plane := PlaneMesh.new()
+	ceiling_plane.size = Vector2(CELL, CELL)
+	ceiling_plane.flip_faces = true
+	ceiling_plane.center_offset = Vector3(0, WALL_HEIGHT / 2.0, 0)
+	for part in [[floor_plane, _floor_mat], [ceiling_plane, _ceiling_mat]]:
+		tile.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, part[0].get_mesh_arrays())
+		var mat: StandardMaterial3D = part[1]
+		if not (mat.albedo_texture is NoiseTexture2D):
+			mat.uv1_scale = Vector3.ONE
+		tile.surface_set_material(tile.get_surface_count() - 1, mat)
+	var lib := MeshLibrary.new()
+	lib.create_item(0)
+	lib.set_item_mesh(0, tile)
+	return lib
 
 
 func _build_library(wall_mats: Array[StandardMaterial3D]) -> MeshLibrary:
@@ -236,6 +319,17 @@ func _decal_material(entry: Dictionary) -> StandardMaterial3D:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	mat.alpha_scissor_threshold = 0.5
 	mat.roughness = 0.95
+	return mat
+
+
+## A torch frame: unlit (the flame is its own light), with its soft glow
+## halo blended over the wall behind it.
+func _glow_material(path: String) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = load(path)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	return mat
 
 

@@ -38,14 +38,15 @@ godot --headless --path . --script res://tests/run_tests.gd
 - `src/rules/`: game rules with no rendering (grid, generator, the player's map). Testable headless.
 - `src/view/`: scenes' scripts that draw or display the rules.
 - `scenes/`: Godot scenes.
-- `data/`: content and tuning (`data/generation/floor.json` sets floor size, room counts).
+- `data/`: content and tuning (`data/generation/floor.json` sets floor size, room counts, and how many torches there are and how far apart).
 - `data/town/places.json`: the places listed on the town menu, in order. A place with a `scene` opens it.
 - `assets/ui/`: menu art (the parchment scroll behind the town menu buttons).
-- `data/themes/`: which textures the 3D view uses for walls (with weights), floor, ceiling, stairs up and the trapdoor down. `basement.json` is the demo dungeon.
+- `data/themes/`: which textures the 3D view uses for walls (with weights), floor, ceiling, stairs up, the trapdoor down, and the torch animation and its light. `basement.json` is the demo dungeon.
 - `assets/textures/`: texture images.
 - `tests/`: headless checks.
 
 ## Credits
 
 - Basement wall, stone floor, stairs and trapdoor textures: *Pixel Art Medieval Interiors* by Acasas.
+- Wall torch animation: *Old Castle sprite Set* by Acasas.
 - Scroll menu buttons (`assets/ui/scroll_button.png`): *Pixelart Medieval UI Pack* (author not named in the pack files).
