@@ -1,0 +1,9 @@
+{
+	"name": "Basement",
+	"walls": [
+		{ "texture": "res://assets/textures/basement/basement_wall_1.png", "weight": 3 },
+		{ "texture": "res://assets/textures/basement/basement_wall_3.png", "weight": 1 }
+	],
+	"floor": { "texture": "res://assets/textures/basement/stone_floor_2.png" },
+	"ceiling": { "texture": "res://assets/textures/basement/stone_floor_2.png", "tint": "6a635a" }
+}

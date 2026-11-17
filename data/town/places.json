@@ -1,0 +1,11 @@
+{
+	"places": [
+		{"id": "delve", "name": "Delve", "scene": "res://scenes/map_preview.tscn"},
+		{"id": "inn", "name": "Inn"},
+		{"id": "shop", "name": "Shop"},
+		{"id": "tavern", "name": "Tavern"},
+		{"id": "smith", "name": "Smith"},
+		{"id": "alchemist", "name": "Alchemist"},
+		{"id": "guild_hall", "name": "Guild hall"}
+	]
+}

@@ -1,6 +1,7 @@
 extends RefCounted
-## Builds a floor from a seed: rooms joined by corridors, stairs up in one
-## room and stairs down in the farthest room.
+## Builds a floor from a seed: rooms joined by corridors, with the party
+## starting in a random room. (No stairs yet: they come back with multiple
+## floors.)
 ## The same seed and settings always give the same floor.
 ##
 ## This is the first pass. Later passes will swap plain rectangles for
@@ -8,9 +9,12 @@ extends RefCounted
 
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 
+## Largest floor side: columns are lettered A to Z on the map.
+const MAX_SIZE := 26
+
 const DEFAULT_SETTINGS := {
-	"width": 32,
-	"height": 32,
+	"width": 26,
+	"height": 26,
 	"room_attempts": 60,
 	"max_rooms": 10,
 	"room_min_size": 3,
@@ -34,8 +38,8 @@ static func load_settings(path: String) -> Dictionary:
 
 
 static func generate(seed_value: int, settings: Dictionary = DEFAULT_SETTINGS) -> FloorGrid:
-	var width: int = int(settings["width"])
-	var height: int = int(settings["height"])
+	var width: int = mini(int(settings["width"]), MAX_SIZE)
+	var height: int = mini(int(settings["height"]), MAX_SIZE)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
@@ -45,7 +49,7 @@ static func generate(seed_value: int, settings: Dictionary = DEFAULT_SETTINGS) -
 
 	_place_rooms(grid, rng, settings)
 	_connect_rooms(grid, rng, int(settings["extra_connections"]))
-	_place_stairs(grid, rng)
+	_place_start(grid, rng)
 	return grid
 
 
@@ -126,29 +130,11 @@ static func _carve_rect(grid: FloorGrid, rect: Rect2i) -> void:
 			grid.set_cell(Vector2i(x, y), FloorGrid.Cell.FLOOR)
 
 
-## Stairs up in a random room; stairs down in the room cell farthest away
-## by walking distance, so each floor has a real route to chart.
-static func _place_stairs(grid: FloorGrid, rng: RandomNumberGenerator) -> void:
+## The party starts in the middle of a random room.
+static func _place_start(grid: FloorGrid, rng: RandomNumberGenerator) -> void:
 	if grid.rooms.is_empty():
 		return
-	var start_room := grid.rooms[rng.randi_range(0, grid.rooms.size() - 1)]
-	grid.stairs_up = _center(start_room)
-
-	var dist := grid.distances_from(grid.stairs_up)
-	var farthest := grid.stairs_up
-	var farthest_steps := -1
-	for room in grid.rooms:
-		for y in range(room.position.y, room.end.y):
-			for x in range(room.position.x, room.end.x):
-				var p := Vector2i(x, y)
-				var steps: int = dist.get(p, -1)
-				if steps > farthest_steps:
-					farthest_steps = steps
-					farthest = p
-
-	grid.stairs_down = farthest
-	grid.set_cell(grid.stairs_up, FloorGrid.Cell.STAIRS_UP)
-	grid.set_cell(grid.stairs_down, FloorGrid.Cell.STAIRS_DOWN)
+	grid.start = _center(grid.rooms[rng.randi_range(0, grid.rooms.size() - 1)])
 
 
 static func _center(rect: Rect2i) -> Vector2i:

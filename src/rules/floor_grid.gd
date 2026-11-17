@@ -2,7 +2,7 @@ extends RefCounted
 ## One dungeon floor as a grid of cells. Pure data: no nodes, no drawing,
 ## so it can be tested headless and shared by the 3D view and the map screen.
 
-enum Cell { WALL, FLOOR, STAIRS_UP, STAIRS_DOWN }
+enum Cell { WALL, FLOOR }
 
 const DIRECTIONS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
@@ -11,8 +11,7 @@ var height: int
 var cells: PackedByteArray
 var seed_value: int = 0
 var rooms: Array[Rect2i] = []
-var stairs_up := Vector2i(-1, -1)
-var stairs_down := Vector2i(-1, -1)
+var start := Vector2i(-1, -1)   ## Where the party enters the floor.
 
 
 func _init(w: int, h: int) -> void:

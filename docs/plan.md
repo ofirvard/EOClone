@@ -19,14 +19,14 @@ The build order for the game, in eight phases. Each phase ends with something pl
 
 Walk a generated floor in first person and draw the map by hand. Built and tested on PC first; phone comes in phase 8, but the map code keeps touch in mind (big targets, pinch zoom).
 
-- [x] Seeded floor generator (rooms and corridors, stairs up and down)
+- [x] Seeded floor generator (rooms and corridors, at most 26 × 26 so columns run A–Z)
 - [x] First-person 3D view; W/S move, Q/E strafe, A/D turn, hold to repeat
 - [x] Footsteps fill in on the map
 - [x] Walls drawn dot to dot on cell edges, with trace, erase and undo
 - [x] Zoom and pan (wheel, pinch, buttons, drag)
 - [x] True layout view that marks wrong walls
 - [ ] Map icons: stairs, treasure, trap, camp, gather point, enemy, note (defined in a data file)
-- [ ] Several floors joined by stairs, each with its own map
+- [ ] Several floors joined by stairs, each with its own map (stairs were taken out of the single-floor demo and come back here)
 - [ ] Basic accuracy score when you leave a floor
 - [ ] Save and load a run (seed plus your map)
 
@@ -104,7 +104,7 @@ Different places to chart, each with its own look and rules.
 
 ## Phase 7: City building
 
-The guild's home town grows with your success. Still to design.
+The guild's home town grows with your success. Still to design. A first town menu already exists: Delve, Smith, Inn, Tavern, Shop, Alchemist and Guild hall, listed on the left; only Delve works so far.
 
 - Spend income on buildings that unlock services (shop tiers, inn, training, cartographers' hall)
 - Town upgrades feed back into expeditions: better gear, more heroes, better survey tools

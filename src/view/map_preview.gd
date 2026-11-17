@@ -8,6 +8,7 @@ const FloorGenerator = preload("res://src/rules/floor_generator.gd")
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 const PlayerMap = preload("res://src/rules/player_map.gd")
 const Edges = preload("res://src/rules/edges.gd")
+const Coords = preload("res://src/rules/coords.gd")
 const DungeonView3D = preload("res://src/view/dungeon_view_3d.gd")
 
 const SETTINGS_PATH := "res://data/generation/floor.json"
@@ -19,8 +20,6 @@ const WALL_LINE := Color("2a2118")
 const FLOOR := Color("f7efd9")
 const UNKNOWN := Color("e3d5b2")
 const GRID_LINE := Color(0.23, 0.18, 0.13, 0.15)
-const STAIRS_UP := Color("2f7a5a")
-const STAIRS_DOWN := Color("a33b2b")
 const VIEWER := Color("2d5fa8")
 const WRONG := Color("d0452f")
 const TRACE := Color(0.23, 0.18, 0.13, 0.45)
@@ -30,11 +29,12 @@ const MOVE_KEYS: Array[Key] = [KEY_W, KEY_S, KEY_Q, KEY_E, KEY_A, KEY_D]
 const HOLD_DELAY := 0.3          ## Pause before a held key starts repeating.
 const REPEAT_INTERVAL := 0.2     ## Time between steps while held.
 
+const LABEL_BAND := Vector2(28, 20)   ## Left strip for row numbers, top strip for column letters.
 const MAX_ZOOM := 8.0            ## Zoom 1 fits the whole floor.
 const WHEEL_ZOOM := 1.2
 const DRAG_THRESHOLD := 8.0      ## Pixels a Move-tool press must travel to pan.
 
-enum Tool { MOVE, WALL }
+enum Tool { MOVE, PENCIL, ERASER }
 
 var _held_key: Key = KEY_NONE
 var _hold_timer := 0.0
@@ -46,9 +46,8 @@ var _show_truth := false
 var _view_cell := Vector2i.ZERO
 var _facing := 0
 
-var _tool := Tool.WALL
+var _tool := Tool.PENCIL
 var _drawing := false
-var _stroke_mode := -1               ## -1 not decided yet, 0 erase, 1 draw.
 var _anchor := Edges.NO_DOT          ## Dot the trace line starts from.
 var _pointer := Vector2.ZERO         ## Last pointer position, in grid units.
 var _trail := PackedVector2Array()   ## Pointer path since the last dot, in grid units.
@@ -106,7 +105,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_1:
 			_select_tool(Tool.MOVE)
 		KEY_2:
-			_select_tool(Tool.WALL)
+			_select_tool(Tool.PENCIL)
+		KEY_3:
+			_select_tool(Tool.ERASER)
 		_:
 			if MOVE_KEYS.has(key):
 				_move_key(key)
@@ -152,7 +153,7 @@ func _generate(seed_value: int) -> void:
 	_map = PlayerMap.new(_grid.width, _grid.height)
 	_seed_edit.text = str(seed_value)
 	_view_3d.build(_grid)
-	_view_cell = _grid.stairs_up
+	_view_cell = _grid.start
 	_facing = _open_facing(_view_cell, 0)
 	_map.visit(_view_cell)
 	_view_3d.set_viewpoint(_view_cell, _facing, false)
@@ -319,33 +320,46 @@ func _jump_to(cell: Vector2i) -> void:
 		_update_viewpoint()
 
 
-## Wall tool: press to start a trace line from the nearest dot, then drag.
-## A wall is placed only when the line reaches another dot in the same row or
-## column; the line then carries on from that dot. A stroke whose first line
-## is already a wall erases instead.
+## Pencil: press to start a trace from the nearest dot, then drag. A wall is
+## placed only when the trace reaches another dot in the same row or column;
+## the trace then carries on from that dot.
+## Eraser: drag over walls to rub them out; the trace shows the whole path.
 func _start_stroke(g: Vector2) -> void:
 	var dot := Vector2i(roundi(g.x), roundi(g.y))
 	if dot.x < 0 or dot.y < 0 or dot.x > _grid.width or dot.y > _grid.height:
 		return
 	_drawing = true
-	_stroke_mode = -1
 	_map.begin_stroke()
 	_anchor = dot
 	_pointer = g
-	_trail = PackedVector2Array([Vector2(dot), g])
+	if _tool == Tool.ERASER:
+		_trail = PackedVector2Array([g])
+		_erase_at(g)
+	else:
+		_trail = PackedVector2Array([Vector2(dot), g])
 	_canvas.queue_redraw()
 
 
 ## Samples the path since the last pointer position, so a fast drag still
-## passes through every dot it crosses.
+## passes through every dot (or wall) it crosses.
 func _continue_stroke(g: Vector2) -> void:
 	var steps := maxi(1, ceili(g.distance_to(_pointer) / 0.1))
 	for i in range(1, steps + 1):
-		if _reach_dot(Edges.dot_near(_pointer.lerp(g, float(i) / steps))):
+		var q := _pointer.lerp(g, float(i) / steps)
+		if _tool == Tool.ERASER:
+			_erase_at(q)
+		elif _reach_dot(Edges.dot_near(q)):
 			_trail = PackedVector2Array([Vector2(_anchor)])
-	_trail.append(g)
+	if _tool != Tool.ERASER:
+		_trail.append(g)
 	_pointer = g
 	_canvas.queue_redraw()
+
+
+func _erase_at(g: Vector2) -> void:
+	for edge in Edges.near(g):
+		if _map.has_wall(edge):
+			_map.set_wall(edge, false)
 
 
 ## Connects the anchor to `dot` if they share a row or column. Returns true
@@ -357,11 +371,8 @@ func _reach_dot(dot: Vector2i) -> bool:
 	if edges.is_empty():
 		return false   # Diagonal: keep tracing from the same dot.
 	for edge in edges:
-		if not _map.can_draw(edge):
-			continue
-		if _stroke_mode == -1:
-			_stroke_mode = 0 if _map.has_wall(edge) else 1
-		_map.set_wall(edge, _stroke_mode == 1)
+		if _map.can_draw(edge):
+			_map.set_wall(edge, true)
 	_anchor = dot
 	return true
 
@@ -386,7 +397,7 @@ func _cancel_stroke() -> void:
 
 ## Works out the map's cell size and top-left corner on the canvas.
 func _update_layout() -> void:
-	var area := _canvas.size
+	var area := _canvas.size - LABEL_BAND
 	var fit := minf(area.x / _grid.width, area.y / _grid.height)
 	_map_cell = floorf(fit * _zoom)
 	if _map_cell < 2.0:
@@ -396,7 +407,7 @@ func _update_layout() -> void:
 	# Keep the map on screen: no panning on an axis where it fits.
 	var slack := ((full - area) / 2.0).max(Vector2.ZERO)
 	_pan = _pan.clamp(-slack, slack)
-	_map_origin = ((area - full) / 2.0 + _pan).floor()
+	_map_origin = (LABEL_BAND + (area - full) / 2.0 + _pan).floor()
 
 
 ## Zooms by `factor`, keeping the point under `pos` (canvas pixels) still.
@@ -433,8 +444,8 @@ func _keep_in_view(cell: Vector2i) -> void:
 		return
 	var margin := _map_cell * 1.5
 	var p := _map_origin + (Vector2(cell) + Vector2(0.5, 0.5)) * _map_cell
-	var lo := Vector2(margin, margin)
-	var hi := _canvas.size - lo
+	var lo := LABEL_BAND + Vector2(margin, margin)
+	var hi := _canvas.size - Vector2(margin, margin)
 	_pan += p.clamp(lo, hi) - p
 
 
@@ -521,18 +532,7 @@ func _build_ui() -> void:
 	tools.add_theme_constant_override("separation", 6)
 	map_pane.add_child(tools)
 	var group := ButtonGroup.new()
-	for entry in [[Tool.MOVE, "Move"], [Tool.WALL, "Wall"]]:
-		var button := Button.new()
-		button.text = entry[1]
-		button.toggle_mode = true
-		button.button_group = group
-		button.focus_mode = Control.FOCUS_NONE
-		button.custom_minimum_size = Vector2(72, 36)
-		var which: Tool = entry[0]
-		button.pressed.connect(func(): _tool = which)
-		tools.add_child(button)
-		_tool_buttons.append(button)
-	_tool_buttons[_tool].button_pressed = true
+	tools.add_child(_tool_button(Tool.MOVE, "Move", group))
 
 	_undo_button = Button.new()
 	_undo_button.text = "Undo"
@@ -553,6 +553,11 @@ func _build_ui() -> void:
 		zoom_button.pressed.connect(func(): _zoom_button(factor))
 		tools.add_child(zoom_button)
 
+	var map_row := HBoxContainer.new()
+	map_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_row.add_theme_constant_override("separation", 8)
+	map_pane.add_child(map_row)
+
 	_canvas = Control.new()
 	_canvas.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_canvas.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -561,7 +566,15 @@ func _build_ui() -> void:
 	_canvas.draw.connect(_draw_map)
 	_canvas.resized.connect(_canvas.queue_redraw)
 	_canvas.gui_input.connect(_on_canvas_input)
-	map_pane.add_child(_canvas)
+	map_row.add_child(_canvas)
+
+	# Drawing tools, in a column on the right side of the map.
+	var draw_tools := VBoxContainer.new()
+	draw_tools.add_theme_constant_override("separation", 6)
+	map_row.add_child(draw_tools)
+	draw_tools.add_child(_tool_button(Tool.PENCIL, "Pencil", group))
+	draw_tools.add_child(_tool_button(Tool.ERASER, "Eraser", group))
+	_tool_buttons[_tool].button_pressed = true
 
 	var frame := PanelContainer.new()
 	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -581,10 +594,25 @@ func _build_ui() -> void:
 	_view_3d = DungeonView3D.new()
 	viewport.add_child(_view_3d)
 
-	var legend := _label("W/S move · Q/E strafe · A/D turn (hold to repeat)   ·   1 Move tool: tap a walked cell to jump   ·   2 Wall tool: drag from dot to dot to draw, start on a wall to erase   ·   wheel or pinch to zoom, right-drag (or drag with Move) to pan   ·   Ctrl+Z undo   ·   M true layout   ·   Space new floor")
+	var legend := _label("W/S move · Q/E strafe · A/D turn (hold to repeat)   ·   1 Move tool: tap a walked cell to jump   ·   2 Pencil: drag from dot to dot to draw walls   ·   3 Eraser: drag over walls to rub them out   ·   wheel or pinch to zoom, right-drag (or drag with Move) to pan   ·   Ctrl+Z undo   ·   M true layout   ·   Space new floor")
 	legend.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(legend)
+
+
+## A toggle button for `which`, stored in _tool_buttons at index `which`.
+func _tool_button(which: Tool, text: String, group: ButtonGroup) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.toggle_mode = true
+	button.button_group = group
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(72, 36)
+	button.pressed.connect(func(): _tool = which)
+	if _tool_buttons.size() <= which:
+		_tool_buttons.resize(which + 1)
+	_tool_buttons[which] = button
+	return button
 
 
 func _on_truth_toggled(on: bool) -> void:
@@ -628,7 +656,9 @@ func _draw_map() -> void:
 	for y in _grid.height + 1:
 		var py := origin.y + y * cell
 		_canvas.draw_line(Vector2(origin.x, py), Vector2(origin.x + full.x, py), GRID_LINE)
-	_canvas.draw_rect(Rect2(origin, full), INK, false, 1.0)
+	# Frame, kept just inside the map so the label strips don't cover its top
+	# and left sides.
+	_canvas.draw_rect(Rect2(origin + Vector2.ONE, full - Vector2.ONE * 2.0), INK, false, 2.0)
 
 	# Walls: bold lines on cell edges.
 	var width := clampf(cell * 0.22, 3.0, 10.0)
@@ -643,28 +673,73 @@ func _draw_map() -> void:
 		for edge in _map.wall_edges():
 			_draw_wall(edge, WALL_LINE, width)
 
-	# Trace while drawing: the pointer's path since the last dot.
-	if _drawing:
-		var trace := Color(WRONG, 0.6) if _stroke_mode == 0 else TRACE
+	# Eraser: a circle under the pointer, the size of what it rubs out.
+	if _drawing and _tool == Tool.ERASER:
+		var at := origin + _pointer * cell
+		var radius := maxf(4.0, cell * Edges.ERASER_REACH)
+		_canvas.draw_circle(at, radius, Color(WRONG, 0.25))
+		_canvas.draw_arc(at, radius, 0.0, TAU, 24, Color(WRONG, 0.8), 1.5, true)
+	# Pencil: the pointer's path since the last dot, starting with a dot mark.
+	elif _drawing:
 		var trace_width := clampf(cell * 0.12, 2.0, 6.0)
 		var points := PackedVector2Array()
 		for q in _trail:
 			points.append(origin + q * cell)
 		if points.size() >= 2:
-			_canvas.draw_polyline(points, trace, trace_width, true)
-		_canvas.draw_circle(points[0], trace_width * 1.4, trace)
+			_canvas.draw_polyline(points, TRACE, trace_width, true)
+		_canvas.draw_circle(points[0], trace_width * 1.4, TRACE)
 
 	# Viewpoint: a dot with an arrow toward the facing direction.
 	var view_rect := Rect2(origin + Vector2(_view_cell) * cell, size)
 	_canvas.draw_circle(view_rect.get_center(), cell * 0.5, Color(VIEWER, 0.25))
 	_draw_arrow(view_rect, _facing, VIEWER)
 
+	_draw_labels()
+
+
+## Column letters along the top and row numbers down the left. The strips stay
+## put while the map pans under them; labels thin out when cells are small.
+## The viewer's column and row are highlighted.
+func _draw_labels() -> void:
+	var font := ThemeDB.fallback_font
+	var cell := _map_cell
+	var font_size := int(clampf(cell * 0.55, 9.0, 14.0))
+	var area := _canvas.size
+	# The strips hug the map's top and left edges, or the canvas edge once the
+	# map is bigger than the view.
+	var top := maxf(0.0, _map_origin.y - LABEL_BAND.y)
+	var left := maxf(0.0, _map_origin.x - LABEL_BAND.x)
+	_canvas.draw_rect(Rect2(0, 0, area.x, top + LABEL_BAND.y), PAPER)
+	_canvas.draw_rect(Rect2(0, 0, left + LABEL_BAND.x, area.y), PAPER)
+	var centre_y := (font.get_ascent(font_size) - font.get_descent(font_size)) / 2.0
+
+	var widest := Coords.column_name(_grid.width - 1)
+	var col_width := font.get_string_size(widest, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + 1.0
+	var col_step := maxi(1, ceili(col_width / cell))
+	for x in range(0, _grid.width, col_step):
+		var cx := _map_origin.x + (x + 0.5) * cell
+		if cx < left + LABEL_BAND.x or cx > area.x:
+			continue
+		_draw_label(Coords.column_name(x), Vector2(cx, top + LABEL_BAND.y / 2.0 + centre_y), x == _view_cell.x, font, font_size)
+
+	var row_step := maxi(1, ceili((font_size + 2.0) / cell))
+	for y in range(0, _grid.height, row_step):
+		var cy := _map_origin.y + (y + 0.5) * cell
+		if cy < top + LABEL_BAND.y or cy > area.y:
+			continue
+		_draw_label(Coords.row_name(y), Vector2(left + LABEL_BAND.x / 2.0, cy + centre_y), y == _view_cell.y, font, font_size)
+
+
+## Text centred horizontally on `at` (at.y is the baseline).
+func _draw_label(text: String, at: Vector2, highlight: bool, font: Font, font_size: int) -> void:
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	_canvas.draw_string(font, Vector2(at.x - w / 2.0, at.y), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, VIEWER if highlight else Color(INK, 0.75))
+
 
 ## The player's map: walked cells filled in, blank paper elsewhere.
 func _draw_player_cell(p: Vector2i, rect: Rect2) -> void:
 	if _map.is_visited(p):
 		_canvas.draw_rect(rect, FLOOR)
-		_draw_stairs(p, rect)
 	else:
 		_canvas.draw_rect(rect, UNKNOWN)
 
@@ -672,7 +747,6 @@ func _draw_player_cell(p: Vector2i, rect: Rect2) -> void:
 ## The real layout: open floor, solid rock shaded.
 func _draw_true_cell(p: Vector2i, rect: Rect2) -> void:
 	_canvas.draw_rect(rect, FLOOR if _grid.is_walkable(p) else ROCK)
-	_draw_stairs(p, rect)
 
 
 func _true_wall_edges() -> Array[Vector3i]:
@@ -694,14 +768,6 @@ func _draw_wall(edge: Vector3i, color: Color, width: float) -> void:
 	_canvas.draw_line(a, b, color, width)
 	_canvas.draw_circle(a, width / 2.0, color)
 	_canvas.draw_circle(b, width / 2.0, color)
-
-
-func _draw_stairs(p: Vector2i, rect: Rect2) -> void:
-	match _grid.get_cell(p):
-		FloorGrid.Cell.STAIRS_UP:
-			_draw_arrow(rect, 0, STAIRS_UP)
-		FloorGrid.Cell.STAIRS_DOWN:
-			_draw_arrow(rect, 2, STAIRS_DOWN)
 
 
 ## Triangle inside `rect` pointing along FloorGrid.DIRECTIONS[direction].

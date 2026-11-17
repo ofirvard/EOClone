@@ -2,39 +2,50 @@ extends Node3D
 ## First-person 3D view of a floor. Walls come from a GridMap built from the
 ## rules grid; floor and ceiling are one plane each. A torch light rides on
 ## the camera and fog hides the distance, so only nearby walls read clearly.
+## Textures come from a theme file in data/themes/.
 
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 
 const CELL := 2.0            ## Width of one grid cell in metres.
-const WALL_HEIGHT := 2.6
-const EYE_HEIGHT := 1.5
+const WALL_HEIGHT := 2.0     ## Same as CELL, so square wall textures aren't stretched.
+const EYE_HEIGHT := 1.1
 const TURN_TIME := 0.15
+const THEME_PATH := "res://data/themes/basement.json"
 
-enum Item { WALL, STAIRS_UP, STAIRS_DOWN }
 
 var _gridmap: GridMap
 var _floor: MeshInstance3D
 var _ceiling: MeshInstance3D
 var _camera: Camera3D
 var _tween: Tween
+var _floor_mat: StandardMaterial3D
+var _ceiling_mat: StandardMaterial3D
+var _wall_weights: Array[int] = []
 
 
 func _init() -> void:
-	var stone := _material(Color("8a7f70"), 0.35)
-	var floor_mat := _material(Color("5b5246"), 0.6)
-	var ceiling_mat := _material(Color("3d362e"), 0.6)
+	var theme := _load_theme(THEME_PATH)
+	var wall_mats: Array[StandardMaterial3D] = []
+	for wall in theme.get("walls", []):
+		wall_mats.append(_texture_material(wall))
+		_wall_weights.append(int(wall.get("weight", 1)))
+	if wall_mats.is_empty():
+		wall_mats.append(_material(Color("8a7f70"), 0.35))
+		_wall_weights.append(1)
+	_floor_mat = _texture_material(theme["floor"]) if theme.has("floor") else _material(Color("5b5246"), 0.6)
+	_ceiling_mat = _texture_material(theme["ceiling"]) if theme.has("ceiling") else _material(Color("3d362e"), 0.6)
 
 	_gridmap = GridMap.new()
 	_gridmap.cell_size = Vector3(CELL, WALL_HEIGHT, CELL)
-	_gridmap.mesh_library = _build_library(stone)
+	_gridmap.mesh_library = _build_library(wall_mats)
 	add_child(_gridmap)
 
 	_floor = MeshInstance3D.new()
-	_floor.material_override = floor_mat
+	_floor.material_override = _floor_mat
 	add_child(_floor)
 
 	_ceiling = MeshInstance3D.new()
-	_ceiling.material_override = ceiling_mat
+	_ceiling.material_override = _ceiling_mat
 	add_child(_ceiling)
 
 	var env := Environment.new()
@@ -70,22 +81,19 @@ func build(grid: FloorGrid) -> void:
 	_gridmap.clear()
 	for y in grid.height:
 		for x in grid.width:
-			var item := -1
-			match grid.get_cell(Vector2i(x, y)):
-				FloorGrid.Cell.WALL:
-					item = Item.WALL
-				FloorGrid.Cell.STAIRS_UP:
-					item = Item.STAIRS_UP
-				FloorGrid.Cell.STAIRS_DOWN:
-					item = Item.STAIRS_DOWN
-			if item >= 0:
-				_gridmap.set_cell_item(Vector3i(x, 0, y), item)
+			if grid.get_cell(Vector2i(x, y)) == FloorGrid.Cell.WALL:
+				_gridmap.set_cell_item(Vector3i(x, 0, y), _wall_variant(x, y, grid.seed_value))
 
 	var extent := Vector2(grid.width, grid.height) * CELL
 	var floor_mesh := PlaneMesh.new()
 	floor_mesh.size = extent
 	_floor.mesh = floor_mesh
 	_floor.position = Vector3(extent.x / 2, 0, extent.y / 2)
+	# Plane UVs run 0..1 across the whole floor; repeat the texture once per cell.
+	if not (_floor_mat.albedo_texture is NoiseTexture2D):
+		_floor_mat.uv1_scale = Vector3(grid.width, grid.height, 1)
+	if not (_ceiling_mat.albedo_texture is NoiseTexture2D):
+		_ceiling_mat.uv1_scale = Vector3(grid.width, grid.height, 1)
 
 	var ceiling_mesh := PlaneMesh.new()
 	ceiling_mesh.size = extent
@@ -113,74 +121,55 @@ func set_viewpoint(cell: Vector2i, facing: int, animate: bool = true) -> void:
 	_tween.tween_property(_camera, "rotation:y", target_yaw, TURN_TIME)
 
 
-func _build_library(stone: StandardMaterial3D) -> MeshLibrary:
+## Picks a wall texture for a rock cell, weighted, the same every time for
+## the same floor.
+func _wall_variant(x: int, y: int, seed_value: int) -> int:
+	var total := 0
+	for w in _wall_weights:
+		total += w
+	var roll := posmod(hash(Vector3i(x, y, seed_value)), total)
+	for i in _wall_weights.size():
+		roll -= _wall_weights[i]
+		if roll < 0:
+			return i
+	return 0
+
+
+func _build_library(wall_mats: Array[StandardMaterial3D]) -> MeshLibrary:
 	var lib := MeshLibrary.new()
 
-	var wall := BoxMesh.new()
-	wall.size = Vector3(CELL, WALL_HEIGHT, CELL)
-	wall.material = stone
-	lib.create_item(Item.WALL)
-	lib.set_item_mesh(Item.WALL, wall)
+	for i in wall_mats.size():
+		var wall := BoxMesh.new()
+		wall.size = Vector3(CELL, WALL_HEIGHT, CELL)
+		wall.material = wall_mats[i]
+		lib.create_item(i)
+		lib.set_item_mesh(i, wall)
 
-	# Item meshes are centred in the cell, so shift them down to the floor.
-	var to_floor := Transform3D(Basis(), Vector3(0, -WALL_HEIGHT / 2, 0))
-
-	lib.create_item(Item.STAIRS_UP)
-	lib.set_item_mesh(Item.STAIRS_UP, _stairs_up_mesh(_material(Color("6f8f6a"), 0.4)))
-	lib.set_item_mesh_transform(Item.STAIRS_UP, to_floor)
-
-	lib.create_item(Item.STAIRS_DOWN)
-	lib.set_item_mesh(Item.STAIRS_DOWN, _stairs_down_mesh(_material(Color("a3533f"), 0.4)))
-	lib.set_item_mesh_transform(Item.STAIRS_DOWN, to_floor)
 	return lib
 
 
-## Four steps climbing toward the back of the cell.
-func _stairs_up_mesh(mat: StandardMaterial3D) -> Mesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var steps := 4
-	var depth := 1.4 / steps
-	for i in steps:
-		var box := BoxMesh.new()
-		var h := 0.25 * (i + 1)
-		box.size = Vector3(1.2, h, depth)
-		st.append_from(box, 0, Transform3D(Basis(), Vector3(0, h / 2, 0.7 - depth * (i + 0.5))))
-	st.generate_normals()
-	var mesh := st.commit()
-	mesh.surface_set_material(0, mat)
-	return mesh
+func _load_theme(path: String) -> Dictionary:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("No theme at %s; using plain colours." % path)
+		return {}
+	var data = JSON.parse_string(file.get_as_text())
+	return data if data is Dictionary else {}
 
 
-## A dark pit with a low rim, so it reads as "the way down" from a distance.
-func _stairs_down_mesh(rim_mat: StandardMaterial3D) -> Mesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rim := 0.12
-	var outer := 1.5
-	for side in [Vector3(0, 0, -1), Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(1, 0, 0)]:
-		var box := BoxMesh.new()
-		var along_x: bool = side.x == 0
-		box.size = Vector3(outer if along_x else rim, 0.15, rim if along_x else outer)
-		var offset: Vector3 = side * (outer - rim) / 2.0
-		st.append_from(box, 0, Transform3D(Basis(), offset + Vector3(0, 0.075, 0)))
-	var mesh := st.commit()
-	mesh.surface_set_material(0, rim_mat)
-
-	var pit := PlaneMesh.new()
-	pit.size = Vector2(outer - rim * 2, outer - rim * 2)
-	var pit_mat := StandardMaterial3D.new()
-	pit_mat.albedo_color = Color.BLACK
-	pit_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var arrays := pit.get_mesh_arrays()
-	# Lift the pit just above the floor plane to avoid z-fighting.
-	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	for i in verts.size():
-		verts[i].y = 0.01
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.surface_set_material(1, pit_mat)
-	return mesh
+## A material from a theme entry: {"texture": path, "tint": "rrggbb"}.
+## Pixel-art textures keep hard pixels (nearest filtering).
+func _texture_material(entry: Dictionary) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = load(entry["texture"])
+	if entry.has("tint"):
+		mat.albedo_color = Color(entry["tint"])
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+	mat.roughness = 0.95
+	# BoxMesh packs its six faces into a 3x2 grid of the texture; this scale
+	# makes each face show the whole texture once.
+	mat.uv1_scale = Vector3(3, 2, 1)
+	return mat
 
 
 ## Plain colour with a soft noise texture so surfaces don't look flat.

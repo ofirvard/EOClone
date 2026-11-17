@@ -29,8 +29,9 @@ The player draws the map by hand on a grid. The only thing filled in automatical
 
 - **Footsteps fill in.** Each cell you step on is filled in on your map, as in Etrian Odyssey. Cells you haven't walked stay blank, even ones you can see.
 - **Hand drawing.** Place walls, doors, stairs and icons on a grid as the party moves. The game remembers only what the party has seen, so the official map is your work.
-- **Walls are lines between cells (decided).** On the map a wall is a bold line on the edge between two cells, as in Etrian Odyssey. Walls are drawn by connecting dots (cell corners): pressing starts a trace that follows the pointer's path from the nearest dot, and a wall is placed only when the line reaches another dot in the same row or column, so a stray touch never leaves a wall. The Wall tool is the default. Start a stroke on a drawn wall to erase it; undo takes back a whole stroke. Walking across an edge proves it's open, so you can't draw a wall there.
+- **Walls are lines between cells (decided).** On the map a wall is a bold line on the edge between two cells, as in Etrian Odyssey. Walls are drawn by connecting dots (cell corners): pressing starts a trace that follows the pointer's path from the nearest dot, and a wall is placed only when the line reaches another dot in the same row or column, so a stray touch never leaves a wall. The Pencil and Eraser sit in a column on the right of the map; Pencil is the default. The Eraser rubs out any wall the pointer passes over; undo takes back a whole stroke. Walking across an edge proves it's open, so you can't draw a wall there.
 - **Generator vs map walls (prototype).** The generator still builds floors from solid and open cells, and the 3D view shows solid cells as blocks. A real map wall is any edge between an open cell and solid rock, which is what drawn lines are checked against. Thin walls between two open cells (e.g. two rooms sharing one wall) would need the generator to place walls on edges too.
+- **Coordinates.** Columns are lettered along the top and rows numbered down the left (A1 is the top-left cell), so notes, contracts and other players can name a spot ("the trap at F12").
 - **Accuracy is checked.** When you turn in a map, it is compared with the real layout. Accurate maps pay more; a wrong wall costs you, or hurts the next party that uses it.
 - **Notes change play.** Mark a trap and the party walks around it. Marked camp spots let you rest. A marked shortcut makes the next trip faster. Noting enemy types tells you what orders to give before a fight.
 - **Survey tools you upgrade.** A better lantern lights more of the grid, a compass shows facing, a rope measures drops. Your mapping improves, not just your heroes.
@@ -43,6 +44,7 @@ The player draws the map by hand on a grid. The only thing filled in automatical
 - **Phone, map mode:** tap the map for a full-screen zoomed editor with an icon picker. Layers for walls and notes.
 - **Seen but not drawn:** walls the party has seen show as faint dashed lines until you draw them.
 - **Icon set:** treasure, trap, gather, camp, stairs up/down, quicksand, ice slide, enemy, one-way door.
+- **Town menu (prototype).** The game starts in town: a list of places on the left (Delve, Smith, Inn, Tavern, Shop, Alchemist, Guild hall) over a plain backdrop, each written on a parchment scroll. Delve enters the dungeon; the others are placeholders.
 - **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. W/S to move, Q/E to strafe, A/D to turn (hold to keep stepping), mouse to draw.
 
 ## Dungeons and generation
@@ -50,6 +52,7 @@ The player draws the map by hand on a grid. The only thing filled in automatical
 Dungeons are randomly generated, but built from hand-made pieces so every floor has something worth drawing.
 
 - **Templates, not pure noise.** Fully random mazes are boring to map. Generate floors from hand-made rooms and set pieces: puzzles, landmarks, one-way doors, dead ends that hide something.
+- **Floor size.** A floor is at most 26 × 26 cells, so map columns run A to Z.
 - **Seeded and persistent.** Each dungeon comes from a seed and stays the same, so your map stays useful across runs and contracts send you deeper over time.
 - **Shifting zones (maybe).** A few deep areas could change between runs, giving you a reason to come back and re-map.
 - **Locations.** Different places with their own look, enemies, materials and hazards.

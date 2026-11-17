@@ -60,6 +60,26 @@ static func dot_near(g: Vector2, reach: float = 0.3) -> Vector2i:
 	return dot if g.distance_to(Vector2(dot)) <= reach else NO_DOT
 
 
+## Every edge whose line passes within `reach` of point `g` (in grid units).
+## Used by the eraser, which rubs out whatever the pointer passes over.
+const ERASER_REACH := 0.25
+
+
+static func near(g: Vector2, reach: float = ERASER_REACH) -> Array[Vector3i]:
+	var result: Array[Vector3i] = []
+	var base := Vector2i(floori(g.x), floori(g.y))
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var c := base + Vector2i(dx, dy)
+			for axis in [VERTICAL, HORIZONTAL]:
+				var edge := Vector3i(c.x, c.y, axis)
+				var seg := segment(edge)
+				var closest := Geometry2D.get_closest_point_to_segment(g, seg[0], seg[1])
+				if g.distance_to(closest) <= reach:
+					result.append(edge)
+	return result
+
+
 ## The edges along the straight line from dot `a` to dot `b`. Empty if the
 ## dots are the same or not in the same row or column.
 static func between_dots(a: Vector2i, b: Vector2i) -> Array[Vector3i]:

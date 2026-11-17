@@ -6,6 +6,7 @@ const FloorGenerator = preload("res://src/rules/floor_generator.gd")
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 const PlayerMap = preload("res://src/rules/player_map.gd")
 const Edges = preload("res://src/rules/edges.gd")
+const Coords = preload("res://src/rules/coords.gd")
 
 const SEEDS := 300
 
@@ -17,9 +18,11 @@ func _init() -> void:
 	var settings := FloorGenerator.load_settings("res://data/generation/floor.json")
 	test_same_seed_same_floor(settings)
 	test_different_seeds_differ(settings)
+	test_max_size(settings)
 	for seed_value in SEEDS:
 		check_floor(FloorGenerator.generate(seed_value, settings))
 	test_edges()
+	test_coords()
 	test_true_walls()
 	test_footsteps()
 	test_drawing_walls()
@@ -33,6 +36,14 @@ func test_same_seed_same_floor(settings: Dictionary) -> void:
 		var a := FloorGenerator.generate(seed_value, settings)
 		var b := FloorGenerator.generate(seed_value, settings)
 		expect(a.cells == b.cells, "seed %d gives the same floor twice" % seed_value)
+
+
+func test_max_size(settings: Dictionary) -> void:
+	var big := settings.duplicate()
+	big["width"] = 40
+	big["height"] = 99
+	var grid := FloorGenerator.generate(5, big)
+	expect(grid.width == FloorGenerator.MAX_SIZE and grid.height == FloorGenerator.MAX_SIZE, "floors are never bigger than 26 x 26")
 
 
 func test_different_seeds_differ(settings: Dictionary) -> void:
@@ -54,15 +65,12 @@ func check_floor(grid: FloorGrid) -> void:
 		border_ok = border_ok and grid.get_cell(Vector2i(grid.width - 1, y)) == FloorGrid.Cell.WALL
 	expect(border_ok, "%s has a solid outer wall" % tag)
 
-	var ups := 0
-	var downs := 0
-	for v in grid.cells:
-		ups += int(v == FloorGrid.Cell.STAIRS_UP)
-		downs += int(v == FloorGrid.Cell.STAIRS_DOWN)
-	expect(ups == 1 and downs == 1, "%s has one stairs up and one down" % tag)
-	expect(grid.stairs_up != grid.stairs_down, "%s stairs are in different cells" % tag)
+	var in_room := false
+	for room in grid.rooms:
+		in_room = in_room or room.has_point(grid.start)
+	expect(grid.is_walkable(grid.start) and in_room, "%s starts on open floor in a room" % tag)
 
-	var reach := grid.distances_from(grid.stairs_up)
+	var reach := grid.distances_from(grid.start)
 	expect(reach.size() == grid.walkable_cells().size(), "%s every open cell is reachable" % tag)
 
 
@@ -97,8 +105,20 @@ func test_edges() -> void:
 	expect(run.size() == 3 and run.has(below), "dots further apart give every line in between")
 	expect(Edges.between_dots(Vector2i(0, 0), Vector2i(1, 1)).is_empty(), "diagonal dots give no line")
 	expect(Edges.between_dots(Vector2i(2, 2), Vector2i(2, 2)).is_empty(), "a dot to itself gives no line")
+	expect(Edges.near(Vector2(3.1, 3.5)) == [e], "eraser near a line finds that line")
+	expect(Edges.near(Vector2(2.5, 3.5)).is_empty(), "eraser in mid-cell finds nothing")
+	var at_corner := Edges.near(Vector2(3.0, 3.0))
+	expect(at_corner.size() == 4, "eraser on a dot finds the four lines that meet there")
 	var seg := Edges.segment(e)
 	expect(seg[0] == Vector2(3, 3) and seg[1] == Vector2(3, 4), "a line's ends are its two dots")
+
+
+func test_coords() -> void:
+	expect(Coords.column_name(0) == "A" and Coords.column_name(25) == "Z", "columns A to Z")
+	expect(Coords.column_name(26) == "AA" and Coords.column_name(31) == "AF", "columns after Z are AA, AB, ...")
+	expect(Coords.column_name(701) == "ZZ" and Coords.column_name(702) == "AAA", "columns roll over like a spreadsheet")
+	expect(Coords.row_name(0) == "1" and Coords.row_name(31) == "32", "rows are numbered from 1")
+	expect(Coords.cell_name(Vector2i(2, 4)) == "C5", "a cell reads as column then row")
 
 
 func test_true_walls() -> void:
