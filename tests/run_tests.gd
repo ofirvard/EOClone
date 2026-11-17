@@ -58,11 +58,11 @@ func check_floor(grid: FloorGrid) -> void:
 
 	var border_ok := true
 	for x in grid.width:
-		border_ok = border_ok and grid.get_cell(Vector2i(x, 0)) == FloorGrid.Cell.WALL
-		border_ok = border_ok and grid.get_cell(Vector2i(x, grid.height - 1)) == FloorGrid.Cell.WALL
+		border_ok = border_ok and not grid.is_walkable(Vector2i(x, 0))
+		border_ok = border_ok and not grid.is_walkable(Vector2i(x, grid.height - 1))
 	for y in grid.height:
-		border_ok = border_ok and grid.get_cell(Vector2i(0, y)) == FloorGrid.Cell.WALL
-		border_ok = border_ok and grid.get_cell(Vector2i(grid.width - 1, y)) == FloorGrid.Cell.WALL
+		border_ok = border_ok and not grid.is_walkable(Vector2i(0, y))
+		border_ok = border_ok and not grid.is_walkable(Vector2i(grid.width - 1, y))
 	expect(border_ok, "%s has a solid outer wall" % tag)
 
 	var in_room := false
@@ -72,6 +72,27 @@ func check_floor(grid: FloorGrid) -> void:
 
 	var reach := grid.distances_from(grid.start)
 	expect(reach.size() == grid.walkable_cells().size(), "%s every open cell is reachable" % tag)
+
+	# Stairs up: solid, right behind the start, the party facing away from them.
+	expect(grid.get_cell(grid.stairs_up) == FloorGrid.Cell.STAIRS_UP and not grid.is_walkable(grid.stairs_up),
+		"%s has solid stairs up" % tag)
+	expect(grid.stairs_up + FloorGrid.DIRECTIONS[grid.stairs_up_side] == grid.start,
+		"%s starts in front of the stairs up" % tag)
+	expect(grid.start_facing == grid.stairs_up_side, "%s starts facing away from the stairs" % tag)
+
+	# Trapdoor down: walkable, reachable, in a different room from the start.
+	expect(grid.get_cell(grid.stairs_down) == FloorGrid.Cell.STAIRS_DOWN and reach.has(grid.stairs_down),
+		"%s has a reachable trapdoor down" % tag)
+	var same_room := false
+	for room in grid.rooms:
+		same_room = same_room or (room.has_point(grid.start) and room.has_point(grid.stairs_down))
+	expect(not same_room, "%s trapdoor is in a different room from the start" % tag)
+
+	var counts := {}
+	for c in grid.cells:
+		counts[c] = counts.get(c, 0) + 1
+	expect(counts.get(FloorGrid.Cell.STAIRS_UP, 0) == 1 and counts.get(FloorGrid.Cell.STAIRS_DOWN, 0) == 1,
+		"%s has exactly one of each stairs" % tag)
 
 
 func test_footsteps() -> void:

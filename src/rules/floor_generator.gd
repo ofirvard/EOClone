@@ -1,7 +1,7 @@
 extends RefCounted
-## Builds a floor from a seed: rooms joined by corridors, with the party
-## starting in a random room. (No stairs yet: they come back with multiple
-## floors.)
+## Builds a floor from a seed: rooms joined by corridors. The party starts in
+## a random room, in front of the stairs up set into its wall; a trapdoor down
+## sits in another random room.
 ## The same seed and settings always give the same floor.
 ##
 ## This is the first pass. Later passes will swap plain rectangles for
@@ -49,7 +49,7 @@ static func generate(seed_value: int, settings: Dictionary = DEFAULT_SETTINGS) -
 
 	_place_rooms(grid, rng, settings)
 	_connect_rooms(grid, rng, int(settings["extra_connections"]))
-	_place_start(grid, rng)
+	_place_stairs(grid, rng)
 	return grid
 
 
@@ -130,11 +130,41 @@ static func _carve_rect(grid: FloorGrid, rect: Rect2i) -> void:
 			grid.set_cell(Vector2i(x, y), FloorGrid.Cell.FLOOR)
 
 
-## The party starts in the middle of a random room.
-static func _place_start(grid: FloorGrid, rng: RandomNumberGenerator) -> void:
+## Stairs up go in a wall cell beside a random room, and the party starts on
+## the floor in front of them, facing into the room. The trapdoor down goes in
+## the middle of a different room.
+static func _place_stairs(grid: FloorGrid, rng: RandomNumberGenerator) -> void:
 	if grid.rooms.is_empty():
 		return
-	grid.start = _center(grid.rooms[rng.randi_range(0, grid.rooms.size() - 1)])
+	var start_room := rng.randi_range(0, grid.rooms.size() - 1)
+	var room := grid.rooms[start_room]
+
+	# Every (room edge cell, solid neighbour outside the room) pair.
+	var spots: Array[Vector3i] = []   # x, y = room cell; z = direction to the wall
+	for y in range(room.position.y, room.end.y):
+		for x in range(room.position.x, room.end.x):
+			var p := Vector2i(x, y)
+			for dir in 4:
+				var q := p + FloorGrid.DIRECTIONS[dir]
+				if not room.has_point(q) and grid.in_bounds(q) and grid.get_cell(q) == FloorGrid.Cell.WALL:
+					spots.append(Vector3i(x, y, dir))
+	if spots.is_empty():
+		grid.start = _center(room)
+	else:
+		var spot := spots[rng.randi_range(0, spots.size() - 1)]
+		grid.start = Vector2i(spot.x, spot.y)
+		grid.stairs_up = grid.start + FloorGrid.DIRECTIONS[spot.z]
+		grid.stairs_up_side = (spot.z + 2) % 4
+		grid.start_facing = grid.stairs_up_side
+		grid.set_cell(grid.stairs_up, FloorGrid.Cell.STAIRS_UP)
+
+	if grid.rooms.size() < 2:
+		return
+	var down_room := rng.randi_range(0, grid.rooms.size() - 2)
+	if down_room >= start_room:
+		down_room += 1
+	grid.stairs_down = _center(grid.rooms[down_room])
+	grid.set_cell(grid.stairs_down, FloorGrid.Cell.STAIRS_DOWN)
 
 
 static func _center(rect: Rect2i) -> Vector2i:

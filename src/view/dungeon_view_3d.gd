@@ -2,7 +2,8 @@ extends Node3D
 ## First-person 3D view of a floor. Walls come from a GridMap built from the
 ## rules grid; floor and ceiling are one plane each. A torch light rides on
 ## the camera and fog hides the distance, so only nearby walls read clearly.
-## Textures come from a theme file in data/themes/.
+## Textures come from a theme file in data/themes/. Stairs up are a picture on
+## one face of a wall block; the trapdoor down is a picture lying on the floor.
 
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
 
@@ -11,6 +12,8 @@ const WALL_HEIGHT := 2.0     ## Same as CELL, so square wall textures aren't str
 const EYE_HEIGHT := 1.1
 const TURN_TIME := 0.15
 const THEME_PATH := "res://data/themes/basement.json"
+const DECAL_LIFT := 0.01     ## Gap that keeps a picture from flickering into the surface under it.
+const TRAPDOOR_SIZE := 0.9   ## Share of the cell the trapdoor picture spans.
 
 
 var _gridmap: GridMap
@@ -21,6 +24,9 @@ var _tween: Tween
 var _floor_mat: StandardMaterial3D
 var _ceiling_mat: StandardMaterial3D
 var _wall_weights: Array[int] = []
+var _stairs_up_mat: StandardMaterial3D
+var _stairs_down_mat: StandardMaterial3D
+var _props: Node3D           ## Stairs and trapdoor pictures; rebuilt with each floor.
 
 
 func _init() -> void:
@@ -34,6 +40,10 @@ func _init() -> void:
 		_wall_weights.append(1)
 	_floor_mat = _texture_material(theme["floor"]) if theme.has("floor") else _material(Color("5b5246"), 0.6)
 	_ceiling_mat = _texture_material(theme["ceiling"]) if theme.has("ceiling") else _material(Color("3d362e"), 0.6)
+	if theme.has("stairs_up"):
+		_stairs_up_mat = _decal_material(theme["stairs_up"])
+	if theme.has("stairs_down"):
+		_stairs_down_mat = _decal_material(theme["stairs_down"])
 
 	_gridmap = GridMap.new()
 	_gridmap.cell_size = Vector3(CELL, WALL_HEIGHT, CELL)
@@ -47,6 +57,9 @@ func _init() -> void:
 	_ceiling = MeshInstance3D.new()
 	_ceiling.material_override = _ceiling_mat
 	add_child(_ceiling)
+
+	_props = Node3D.new()
+	add_child(_props)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -81,7 +94,7 @@ func build(grid: FloorGrid) -> void:
 	_gridmap.clear()
 	for y in grid.height:
 		for x in grid.width:
-			if grid.get_cell(Vector2i(x, y)) == FloorGrid.Cell.WALL:
+			if not grid.is_walkable(Vector2i(x, y)):
 				_gridmap.set_cell_item(Vector3i(x, 0, y), _wall_variant(x, y, grid.seed_value))
 
 	var extent := Vector2(grid.width, grid.height) * CELL
@@ -100,6 +113,48 @@ func build(grid: FloorGrid) -> void:
 	ceiling_mesh.flip_faces = true
 	_ceiling.mesh = ceiling_mesh
 	_ceiling.position = Vector3(extent.x / 2, WALL_HEIGHT, extent.y / 2)
+
+	_build_props(grid)
+
+
+## The stairs picture on the wall face toward the room, and the trapdoor
+## picture on the floor. Each keeps its texture's proportions.
+func _build_props(grid: FloorGrid) -> void:
+	for child in _props.get_children():
+		child.queue_free()
+
+	if _stairs_up_mat and grid.in_bounds(grid.stairs_up):
+		var side := FloorGrid.DIRECTIONS[grid.stairs_up_side]
+		var quad := QuadMesh.new()
+		quad.size = Vector2(WALL_HEIGHT * _aspect(_stairs_up_mat), WALL_HEIGHT)
+		var stairs := MeshInstance3D.new()
+		stairs.mesh = quad
+		stairs.material_override = _stairs_up_mat
+		# A quad faces +Z; turn it to face the open cell, on the wall's surface.
+		stairs.rotation.y = atan2(side.x, side.y)
+		stairs.position = _cell_centre(grid.stairs_up, WALL_HEIGHT / 2.0) 			+ Vector3(side.x, 0, side.y) * (CELL / 2.0 + DECAL_LIFT)
+		_props.add_child(stairs)
+
+	if _stairs_down_mat and grid.in_bounds(grid.stairs_down):
+		var plane := PlaneMesh.new()
+		var aspect := _aspect(_stairs_down_mat)
+		var span := CELL * TRAPDOOR_SIZE
+		plane.size = Vector2(span, span / aspect) if aspect >= 1.0 else Vector2(span * aspect, span)
+		var trapdoor := MeshInstance3D.new()
+		trapdoor.mesh = plane
+		trapdoor.material_override = _stairs_down_mat
+		trapdoor.position = _cell_centre(grid.stairs_down, DECAL_LIFT)
+		_props.add_child(trapdoor)
+
+
+func _cell_centre(cell: Vector2i, height: float) -> Vector3:
+	return Vector3((cell.x + 0.5) * CELL, height, (cell.y + 0.5) * CELL)
+
+
+## Width over height of a material's texture.
+func _aspect(mat: StandardMaterial3D) -> float:
+	var size := mat.albedo_texture.get_size()
+	return size.x / size.y
 
 
 ## Puts the camera in `cell` looking along FloorGrid.DIRECTIONS[facing]
@@ -169,6 +224,18 @@ func _texture_material(entry: Dictionary) -> StandardMaterial3D:
 	# BoxMesh packs its six faces into a 3x2 grid of the texture; this scale
 	# makes each face show the whole texture once.
 	mat.uv1_scale = Vector3(3, 2, 1)
+	return mat
+
+
+## A material for a picture shown once on a quad: hard pixels, and see-through
+## where the texture is (so the trapdoor's corners show the floor).
+func _decal_material(entry: Dictionary) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = load(entry["texture"])
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.5
+	mat.roughness = 0.95
 	return mat
 
 

@@ -5,5 +5,7 @@
 		{ "texture": "res://assets/textures/basement/basement_wall_3.png", "weight": 1 }
 	],
 	"floor": { "texture": "res://assets/textures/basement/stone_floor_2.png" },
-	"ceiling": { "texture": "res://assets/textures/basement/stone_floor_2.png", "tint": "6a635a" }
+	"ceiling": { "texture": "res://assets/textures/basement/stone_floor_2.png", "tint": "6a635a" },
+	"stairs_up": { "texture": "res://assets/textures/basement/stairs_1.png" },
+	"stairs_down": { "texture": "res://assets/textures/basement/basement_door_2.png" }
 }

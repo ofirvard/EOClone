@@ -23,6 +23,8 @@ const GRID_LINE := Color(0.23, 0.18, 0.13, 0.15)
 const VIEWER := Color("2d5fa8")
 const WRONG := Color("d0452f")
 const TRACE := Color(0.23, 0.18, 0.13, 0.45)
+const STAIRS_UP := Color("2f7a5a")
+const STAIRS_DOWN := Color("a33b2b")
 
 ## W/S forward/back, Q/E strafe, A/D turn.
 const MOVE_KEYS: Array[Key] = [KEY_W, KEY_S, KEY_Q, KEY_E, KEY_A, KEY_D]
@@ -154,7 +156,7 @@ func _generate(seed_value: int) -> void:
 	_seed_edit.text = str(seed_value)
 	_view_3d.build(_grid)
 	_view_cell = _grid.start
-	_facing = _open_facing(_view_cell, 0)
+	_facing = _open_facing(_view_cell, _grid.start_facing)
 	_map.visit(_view_cell)
 	_view_3d.set_viewpoint(_view_cell, _facing, false)
 	_zoom = 1.0
@@ -744,9 +746,15 @@ func _draw_player_cell(p: Vector2i, rect: Rect2) -> void:
 		_canvas.draw_rect(rect, UNKNOWN)
 
 
-## The real layout: open floor, solid rock shaded.
+## The real layout: open floor, solid rock shaded, stairs up as a green
+## arrow and the trapdoor down as a red one.
 func _draw_true_cell(p: Vector2i, rect: Rect2) -> void:
 	_canvas.draw_rect(rect, FLOOR if _grid.is_walkable(p) else ROCK)
+	match _grid.get_cell(p):
+		FloorGrid.Cell.STAIRS_UP:
+			_draw_arrow(rect, 0, STAIRS_UP)
+		FloorGrid.Cell.STAIRS_DOWN:
+			_draw_arrow(rect, 2, STAIRS_DOWN)
 
 
 func _true_wall_edges() -> Array[Vector3i]:

@@ -2,7 +2,9 @@ extends RefCounted
 ## One dungeon floor as a grid of cells. Pure data: no nodes, no drawing,
 ## so it can be tested headless and shared by the 3D view and the map screen.
 
-enum Cell { WALL, FLOOR }
+## STAIRS_UP is solid (a stairway set into a wall); STAIRS_DOWN is a trapdoor
+## in the floor you can walk over.
+enum Cell { WALL, FLOOR, STAIRS_UP, STAIRS_DOWN }
 
 const DIRECTIONS: Array[Vector2i] = [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
@@ -12,6 +14,10 @@ var cells: PackedByteArray
 var seed_value: int = 0
 var rooms: Array[Rect2i] = []
 var start := Vector2i(-1, -1)   ## Where the party enters the floor.
+var start_facing := 0           ## Index into DIRECTIONS the party faces at the start.
+var stairs_up := Vector2i(-1, -1)
+var stairs_up_side := 0         ## DIRECTIONS index from stairs_up toward the open cell it faces.
+var stairs_down := Vector2i(-1, -1)
 
 
 func _init(w: int, h: int) -> void:
@@ -35,7 +41,10 @@ func set_cell(p: Vector2i, value: int) -> void:
 
 
 func is_walkable(p: Vector2i) -> bool:
-	return in_bounds(p) and get_cell(p) != Cell.WALL
+	if not in_bounds(p):
+		return false
+	var cell := get_cell(p)
+	return cell == Cell.FLOOR or cell == Cell.STAIRS_DOWN
 
 
 func walkable_cells() -> Array[Vector2i]:
@@ -43,7 +52,7 @@ func walkable_cells() -> Array[Vector2i]:
 	for y in height:
 		for x in width:
 			var p := Vector2i(x, y)
-			if get_cell(p) != Cell.WALL:
+			if is_walkable(p):
 				result.append(p)
 	return result
 

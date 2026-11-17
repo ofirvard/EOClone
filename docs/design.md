@@ -44,7 +44,7 @@ The player draws the map by hand on a grid. The only thing filled in automatical
 - **Phone, map mode:** tap the map for a full-screen zoomed editor with an icon picker. Layers for walls and notes.
 - **Seen but not drawn:** walls the party has seen show as faint dashed lines until you draw them.
 - **Icon set:** treasure, trap, gather, camp, stairs up/down, quicksand, ice slide, enemy, one-way door.
-- **Town menu (prototype).** The game starts in town: a list of places on the left (Delve, Smith, Inn, Tavern, Shop, Alchemist, Guild hall) over a plain backdrop, each written on a parchment scroll. Delve enters the dungeon; the others are placeholders.
+- **Town menu (prototype).** The game starts in town: a list of places on the left (Delve, Smith, Inn, Tavern, Shop, Alchemist, Guild hall) over a plain backdrop, each written on a parchment scroll. Delve enters the dungeon; the others are placeholders. Later the right side shows a picture or the game's logo, with a map-making theme.
 - **PC:** view and party on the left, a large map with a vertical toolbar and a floor-notes list on the right. W/S to move, Q/E to strafe, A/D to turn (hold to keep stepping), mouse to draw.
 
 ## Dungeons and generation
@@ -53,8 +53,11 @@ Dungeons are randomly generated, but built from hand-made pieces so every floor 
 
 - **Templates, not pure noise.** Fully random mazes are boring to map. Generate floors from hand-made rooms and set pieces: puzzles, landmarks, one-way doors, dead ends that hide something.
 - **Floor size.** A floor is at most 26 × 26 cells, so map columns run A to Z.
+- **Stairs.** Stairs up are set into a wall: the party starts on the floor in front of them, facing into the room, as if just arrived from above. The way down is a trapdoor in the floor of another random room. In the 3D view the stairs are a picture on the wall and the trapdoor a picture on the floor; the theme file picks both. In the prototype they're scenery: using them comes with multiple floors.
+- **Premade floors mixed in (idea).** Now and then a whole hand-made floor appears among the generated ones, as a landmark or a puzzle floor.
 - **Seeded and persistent.** Each dungeon comes from a seed and stays the same, so your map stays useful across runs and contracts send you deeper over time.
 - **Shifting zones (maybe).** A few deep areas could change between runs, giving you a reason to come back and re-map.
+- **Day and night (idea).** A day and night cycle changes what you meet and what's open: different enemies or events by night, some places only reachable at one time.
 - **Locations.** Different places with their own look, enemies, materials and hazards.
 
 **Location ideas**
@@ -65,6 +68,7 @@ Dungeons are randomly generated, but built from hand-made pieces so every floor 
 **Secrets and breakable terrain**
 
 - **Destroying blocks.** Some walls can be broken with tools or skills to open shortcuts or hidden rooms. The map changes, so your drawing has to be updated.
+- **Secret passages (idea).** Hidden passages that go one way or both ways. A one-way passage is worth marking, since you can't come back through it.
 - **Ping items.** Items or skills send out a pulse that briefly reveals nearby secrets: hidden doors, buried chests, traps. Mark them on the map before the reveal fades.
 - **Locked and breakable doors and chests (idea).** Doors and chests can be locked, needing a key, a lockpick or a skill, or broken open by force. Breaking is quicker but noisy or costly; a locked door you can't open yet is worth marking on the map to come back to. Doors are left out of the first generator prototype and come back with this.
 
@@ -78,6 +82,7 @@ You give orders at the start of each fight; the rest plays out automatically. Yo
 - **Pre-fight orders.** When a fight starts you see what you face, then set orders: focus a target, use a big skill, play defensive, flee. After that the fight resolves on its own.
 - **Scouting pays.** Enemy types you've noted on the map let you plan orders better.
 - **Lasting effects.** Fatigue, injuries and supplies carry through a run, so the trip back from a deep floor is tense.
+- **Sleeping at camp (idea).** The party can sleep at a camp spot to recover, but risks an ambush while asleep. Safer marked camp spots make the risk smaller.
 
 ## Hero growth
 
@@ -94,6 +99,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 
 - **Materials** come from monsters and gathering spots.
 - **Gathering spots are map icons.** They refill between runs, so a good map tells you where to farm.
+- **Camp crafting (idea).** A small set of things can be crafted at camp during a run, more limited than in town.
 - **Mapping gear is craftable too:** better ink, survey tools, camp kits, alongside weapons and armour.
 - **Income** comes mostly from contracts and the maps you turn in; it pays for hiring, gear and supplies.
 

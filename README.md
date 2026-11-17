@@ -41,11 +41,11 @@ godot --headless --path . --script res://tests/run_tests.gd
 - `data/`: content and tuning (`data/generation/floor.json` sets floor size, room counts).
 - `data/town/places.json`: the places listed on the town menu, in order. A place with a `scene` opens it.
 - `assets/ui/`: menu art (the parchment scroll behind the town menu buttons).
-- `data/themes/`: which textures the 3D view uses for walls (with weights), floor and ceiling. `basement.json` is the demo dungeon.
+- `data/themes/`: which textures the 3D view uses for walls (with weights), floor, ceiling, stairs up and the trapdoor down. `basement.json` is the demo dungeon.
 - `assets/textures/`: texture images.
 - `tests/`: headless checks.
 
 ## Credits
 
-- Basement wall and stone floor textures: *Pixel Art Medieval Interiors* by Acasas.
+- Basement wall, stone floor, stairs and trapdoor textures: *Pixel Art Medieval Interiors* by Acasas.
 - Scroll menu buttons (`assets/ui/scroll_button.png`): *Pixelart Medieval UI Pack* (author not named in the pack files).
