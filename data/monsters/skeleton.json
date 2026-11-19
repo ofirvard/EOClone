@@ -1,0 +1,21 @@
+{
+	"id": "skeleton",
+	"name": "Skeleton",
+	"picture": "res://assets/monsters/skeleton.png",
+	"start": {
+		"level": 1,
+		"max_hp": [5, 10],
+		"max_sp": 0,
+		"max_mp": 0,
+		"defense": 0,
+		"speed": 3,
+		"aggro": 5,
+		"attack_min": 1,
+		"attack_max": 3
+	},
+	"combat_skills": [],
+	"rewards": {
+		"xp": 5,
+		"loot": []
+	}
+}

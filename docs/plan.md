@@ -40,7 +40,8 @@ Encounters while exploring, settled by orders you give before the fight.
 - Enemies defined in data files, placed by the generator, some seen roaming
 - Pre-fight screen: see the enemies, pick orders (focus a target, big skill, defend, flee)
 - The fight resolves on its own and shows what happened
-- HP, fatigue and supplies that carry through a run, so going deeper is a risk
+- A hero sheet (see "Heroes" in the design doc): HP, SP, MP, defense, speed, aggro, skills, level and XP
+- HP and supplies that carry through a run, so going deeper is a risk (fatigue is a later idea)
 - Return to town to heal; a wiped party loses the run's map
 - Marked enemies on the map tell you what you'll face
 - Save and load a run (seed plus your maps)

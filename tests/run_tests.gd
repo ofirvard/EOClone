@@ -7,6 +7,11 @@ const FloorGrid = preload("res://src/rules/floor_grid.gd")
 const PlayerMap = preload("res://src/rules/player_map.gd")
 const Edges = preload("res://src/rules/edges.gd")
 const Coords = preload("res://src/rules/coords.gd")
+const Fighter = preload("res://src/rules/fighter.gd")
+const Hero = preload("res://src/rules/hero.gd")
+const Monster = preload("res://src/rules/monster.gd")
+const Encounters = preload("res://src/rules/encounters.gd")
+const Battle = preload("res://src/rules/battle.gd")
 
 const SEEDS := 300
 
@@ -28,6 +33,16 @@ func _init() -> void:
 	test_footsteps()
 	test_drawing_walls()
 	test_undo()
+	test_hero_bars()
+	test_hero_xp()
+	test_targeting()
+	test_turn_order()
+	test_hero_save()
+	test_classes()
+	test_monsters()
+	test_skeleton()
+	test_encounters()
+	test_battles()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 
@@ -235,6 +250,330 @@ func test_undo() -> void:
 	fresh.begin_stroke()
 	fresh.end_stroke()
 	expect(not fresh.can_undo(), "an empty stroke isn't added to history")
+
+func make_hero(hp: int, aggro := 1, speed := 0):
+	return Hero.from_dict({"name": "Test", "max_hp": hp, "max_sp": 10, "max_mp": 5, "aggro": aggro, "speed": speed})
+
+
+func test_hero_bars() -> void:
+	var hero = make_hero(40)
+	expect(hero.hp == 40 and hero.sp == 10 and hero.mp == 5, "a new hero starts with full bars")
+	hero.defense = 20
+	expect(hero.take_damage(10) == 8, "DEF 20 cuts a 10 damage hit to 8")
+	expect(hero.hp == 32, "damage comes off HP")
+	hero.defense = 0
+	expect(hero.take_damage(100) == 32 and hero.hp == 0, "damage stops at 0 HP")
+	expect(hero.is_down(), "a hero at 0 HP is down")
+	expect(hero.heal(10) == 0 and hero.hp == 0, "healing doesn't wake a downed hero")
+	hero.defense = 100
+	expect(hero.damage_after_defense(50) == 0, "DEF 100 blocks everything")
+	hero.defense = 250
+	expect(hero.damage_after_defense(50) == 0, "DEF above 100 counts as 100")
+	expect(hero.damage_after_defense(-5) == 0, "negative damage does nothing")
+
+	expect(hero.spend_sp(4) and hero.sp == 6, "spending SP takes it off")
+	expect(not hero.spend_sp(7) and hero.sp == 6, "can't spend more SP than you have")
+	expect(hero.spend_mp(5) and not hero.spend_mp(1), "MP runs out")
+	hero.rest()
+	expect(hero.hp == 40 and hero.sp == 10 and hero.mp == 5 and not hero.is_down(), "resting fills every bar")
+	hero.defense = 0
+	hero.take_damage(15)
+	expect(hero.heal(100) == 15 and hero.hp == 40, "healing stops at max HP")
+
+
+func test_hero_xp() -> void:
+	var hero = make_hero(10)
+	expect(hero.level == 1 and hero.xp == 0, "heroes start at level 1 with no XP")
+	expect(hero.gain_xp(99) == 0 and hero.level == 1, "99 XP isn't a level")
+	expect(hero.gain_xp(1) == 1 and hero.level == 2 and hero.xp == 0, "100 XP takes level 1 to 2")
+	expect(hero.gain_xp(250) == 2 and hero.level == 4 and hero.xp == 50, "every level costs 100 XP; extra XP carries over")
+	expect(hero.gain_xp(-10) == 0 and hero.xp == 50, "negative XP does nothing")
+
+
+func test_targeting() -> void:
+	var guard = make_hero(10, 8)
+	var mage = make_hero(10, 2)
+	var party := [guard, mage]
+	expect(is_equal_approx(Hero.target_chance(party, guard), 0.8), "aggro 8 of 10 is an 80% chance")
+	expect(is_equal_approx(Hero.target_chance(party, mage), 0.2), "aggro 2 of 10 is a 20% chance")
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var guard_hits := 0
+	for i in 1000:
+		if Hero.pick_target(party, rng) == guard:
+			guard_hits += 1
+	expect(guard_hits > 740 and guard_hits < 860, "picks follow aggro (guard hit %d of 1000)" % guard_hits)
+
+	guard.take_damage(100)
+	expect(Hero.target_chance(party, guard) == 0.0, "a downed hero can't be targeted")
+	expect(is_equal_approx(Hero.target_chance(party, mage), 1.0), "the last one standing takes every hit")
+	var only_mage := true
+	for i in 50:
+		only_mage = only_mage and Hero.pick_target(party, rng) == mage
+	expect(only_mage, "enemies never pick a downed hero")
+	mage.take_damage(100)
+	expect(Hero.pick_target(party, rng) == null, "no target when everyone is down")
+
+	var quiet := [make_hero(10, 0), make_hero(10, 0)]
+	expect(Hero.pick_target(quiet, rng) != null, "a party with no aggro can still be targeted")
+
+
+func test_turn_order() -> void:
+	var slow = make_hero(10, 1, 2)
+	var fast = make_hero(10, 1, 9)
+	var mid_a = make_hero(10, 1, 5)
+	var mid_b = make_hero(10, 1, 5)
+	var fighters := [slow, mid_a, fast, mid_b]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var order := Hero.turn_order(fighters, rng)
+	expect(order[0] == fast and order[3] == slow, "fastest acts first, slowest last")
+	expect(order.has(mid_a) and order.has(mid_b), "nobody is left out of the turn order")
+
+	var same := true
+	for i in 20:
+		var a := RandomNumberGenerator.new()
+		a.seed = i
+		var b := RandomNumberGenerator.new()
+		b.seed = i
+		same = same and Hero.turn_order(fighters, a) == Hero.turn_order(fighters, b)
+	expect(same, "the same seed breaks ties the same way")
+	var both_orders := {}
+	for i in 40:
+		var r := RandomNumberGenerator.new()
+		r.seed = i
+		both_orders[Hero.turn_order(fighters, r)[1] == mid_a] = true
+	expect(both_orders.size() == 2, "ties in speed go either way across seeds")
+
+
+func test_hero_save() -> void:
+	var hero = make_hero(40, 8, 4)
+	hero.name = "Mara"
+	hero.gender = "female"
+	hero.defense = 20
+	hero.combat_skills.assign(["shield_wall", "taunt"])
+	hero.exploration_skills.assign(["brace_door"])
+	hero.take_damage(10)
+	hero.gain_xp(130)
+	var copy = Hero.from_dict(JSON.parse_string(JSON.stringify(hero.to_dict())))
+	expect(copy.to_dict() == hero.to_dict(), "a hero comes back the same after saving through JSON")
+	expect(copy.hp == 32 and copy.level == 2 and copy.xp == 30, "saving keeps HP, level and XP")
+	expect(copy.traits.is_empty() and copy.gear.is_empty(), "traits and gear start empty")
+
+	var odd = Hero.from_dict({"gender": "robot", "hp": 999, "max_hp": 20, "defense": -5, "level": 0})
+	expect(odd.gender == "unspecified", "an unknown gender reads as unspecified")
+	expect(odd.hp == 20, "HP is never above max")
+	expect(odd.defense == 0 and odd.level == 1, "bad values are kept in range")
+	var backwards = Hero.from_dict({"attack_min": 6, "attack_max": 2})
+	expect(backwards.attack_max >= backwards.attack_min, "attack max is never below min")
+
+
+func test_classes() -> void:
+	var classes := Hero.load_classes()
+	expect(classes.has("warrior"), "the warrior class loads from data/classes")
+	if not classes.has("warrior"):
+		return
+	var warrior = Hero.from_class(classes["warrior"], "Bram", "male")
+	expect(warrior.name == "Bram" and warrior.gender == "male" and warrior.class_id == "warrior", "a class hero keeps its name, gender and class")
+	expect(warrior.max_hp == 20 and warrior.hp == 20, "a warrior starts with 20 HP")
+	expect(warrior.max_sp == 10 and warrior.sp == 10 and warrior.max_mp == 0, "a warrior starts with 10 SP and no MP")
+	expect(warrior.speed == 5 and warrior.aggro == 10 and warrior.defense == 5, "a warrior has speed 5, aggro 10 and DEF 5")
+	expect(warrior.level == 1 and warrior.xp == 0, "a class hero starts at level 1")
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var seen := {}
+	for i in 300:
+		seen[warrior.roll_attack(rng)] = true
+	expect(seen.keys().all(func(d): return d >= 4 and d <= 6), "a warrior's attack does 4 to 6")
+	expect(seen.size() == 3, "a warrior's attack can roll 4, 5 and 6")
+
+	var before: Dictionary = warrior.to_dict()
+	warrior.gain_xp(100)
+	var after: Dictionary = warrior.to_dict()
+	before.erase("level")
+	before.erase("xp")
+	after.erase("level")
+	after.erase("xp")
+	expect(warrior.level == 2 and before == after, "levelling up changes nothing else yet")
+
+	var names := Hero.load_names()
+	expect(Hero.GENDERS.all(func(g): return names.get(g, []).size() > 0), "the names file has names for every gender")
+	var genders := {}
+	var named_right := true
+	for i in 60:
+		var hero = Hero.random_from_class(classes["warrior"], names, rng)
+		genders[hero.gender] = true
+		named_right = named_right and hero.name in names[hero.gender] and hero.class_id == "warrior" and hero.hp == 20
+	expect(named_right, "a random warrior gets a name for its gender and the warrior's numbers")
+	expect(genders.size() == 3, "random heroes can be any gender")
+	expect(Hero.random_from_class(classes["warrior"], {}, rng).name != "", "a hero still gets a name without a names file")
+
+
+func test_monsters() -> void:
+	var rat_type := {
+		"id": "rat", "name": "Rat",
+		"start": {"max_hp": 8, "max_sp": 4, "max_mp": 0, "defense": 10, "speed": 7, "aggro": 3,
+			"attack_min": 1, "attack_max": 3, "level": 2},
+		"combat_skills": ["bite"],
+		"rewards": {"xp": 3, "loot": ["rat_tail"]},
+	}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var rat = Monster.from_type(rat_type, rng)
+	expect(rat.name == "Rat" and rat.type_id == "rat", "a monster takes its type's name and id")
+	expect(rat.hp == 8 and rat.sp == 4 and rat.mp == 0, "a monster starts with full bars")
+	expect(rat.defense == 10 and rat.speed == 7 and rat.aggro == 3 and rat.level == 2, "a monster takes its type's numbers")
+	expect(rat.combat_skills == ["bite"], "a monster takes its type's skills")
+	expect(rat.rewards() == {"xp": 3, "loot": ["rat_tail"]}, "a monster gives its type's XP and loot")
+	expect(Monster.from_type(rat_type, rng, "Big Rat").name == "Big Rat", "a monster can be given its own name")
+	expect(rat.damage_after_defense(10) == 9, "monsters take damage through DEF like heroes")
+	expect(rat.take_damage(10) == 8 and rat.hp == 0 and rat.is_down(), "a monster at 0 HP is down")
+
+	var copy = Monster.from_dict(JSON.parse_string(JSON.stringify(rat.to_dict())))
+	expect(copy.to_dict() == rat.to_dict(), "a monster comes back the same after saving through JSON")
+
+	# Heroes pick monsters by aggro too, and both sides share one turn order.
+	var a = Monster.from_type(rat_type, rng)
+	var b = Monster.from_type(rat_type, rng)
+	b.aggro = 9
+	expect(is_equal_approx(Monster.target_chance([a, b], b), 0.75), "heroes target monsters by aggro")
+	var classes := Hero.load_classes()
+	var warrior = Hero.from_class(classes["warrior"], "Bram")
+	var order := Fighter.turn_order([warrior, a, b], rng)
+	expect(order.size() == 3 and order[2] == warrior, "a speed 5 warrior acts after speed 7 rats")
+
+func test_skeleton() -> void:
+	var types := Monster.load_types()
+	expect(types.has("skeleton"), "the skeleton loads from data/monsters")
+	if not types.has("skeleton"):
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var hp_seen := {}
+	var all_right := true
+	for i in 300:
+		var skeleton = Monster.from_type(types["skeleton"], rng)
+		hp_seen[skeleton.max_hp] = true
+		all_right = all_right and skeleton.hp == skeleton.max_hp and skeleton.level == 1 			and skeleton.name == "Skeleton" and skeleton.combat_skills.is_empty() 			and skeleton.rewards() == {"xp": 5, "loot": []}
+	expect(all_right, "a skeleton is level 1, has no skills, starts at full HP and gives 5 XP")
+	expect(hp_seen.keys().all(func(v): return v >= 5 and v <= 10), "a skeleton has 5 to 10 HP")
+	expect(hp_seen.size() == 6, "skeleton HP can be any of 5 to 10")
+	var skeleton = Monster.from_type(types["skeleton"], rng)
+	var damage := {}
+	for i in 300:
+		damage[skeleton.roll_attack(rng)] = true
+	expect(damage.keys().all(func(d): return d >= 1 and d <= 3) and damage.size() == 3, "a skeleton's attack does 1 to 3")
+	var picture: String = types["skeleton"].get("picture", "")
+	expect(ResourceLoader.exists(picture), "the skeleton's picture exists")
+
+	var a := RandomNumberGenerator.new()
+	a.seed = 21
+	var b := RandomNumberGenerator.new()
+	b.seed = 21
+	expect(Monster.from_type(types["skeleton"], a).max_hp == Monster.from_type(types["skeleton"], b).max_hp, "the same seed rolls the same skeleton")
+
+	var warrior = Hero.from_class(Hero.load_classes()["warrior"], "Bram")
+	expect(warrior.gain_xp(skeleton.rewards()["xp"]) == 0 and warrior.xp == 5, "beating a skeleton gives a hero 5 XP")
+
+
+func test_encounters() -> void:
+	var settings := Encounters.load_settings()
+	expect(is_equal_approx(settings["chance"], 0.1) and settings["monster"] == "skeleton", "walking meets a skeleton 10% of the time")
+	expect(Monster.load_types().has(settings["monster"]), "the encounter monster is a real monster type")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var met := 0
+	var only_skeletons := true
+	for i in 5000:
+		var found := Encounters.roll(settings, rng)
+		if found != "":
+			met += 1
+			only_skeletons = only_skeletons and found == "skeleton"
+	expect(met > 420 and met < 580, "about 1 step in 10 meets a monster (%d of 5000)" % met)
+	expect(only_skeletons, "every encounter is a skeleton")
+	expect(Encounters.roll({"chance": 0.0, "monster": "skeleton"}, rng) == "", "chance 0 never meets anything")
+	expect(Encounters.roll({"chance": 1.0, "monster": "skeleton"}, rng) == "skeleton", "chance 1 always meets the monster")
+
+	var a := RandomNumberGenerator.new()
+	a.seed = Encounters.floor_seed(77)
+	var b := RandomNumberGenerator.new()
+	b.seed = Encounters.floor_seed(77)
+	var same := true
+	for i in 200:
+		same = same and Encounters.roll(settings, a) == Encounters.roll(settings, b)
+	expect(same, "the same floor gives the same encounters")
+	expect(Encounters.floor_seed(77) != 77, "encounter rolls don't share the floor's layout seed")
+
+
+func test_battles() -> void:
+	var warrior_class: Dictionary = Hero.load_classes()["warrior"]
+	var skeleton_type: Dictionary = Monster.load_types()["skeleton"]
+	var wins := 0
+	var moves_ok := true
+	var order_ok := true
+	var hp_ok := true
+	for seed_value in 200:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed_value
+		var warrior = Hero.from_class(warrior_class, "Bram")
+		var skeleton = Monster.from_type(skeleton_type, rng)
+		var battle = Battle.fight([warrior], [skeleton], rng)
+		if battle.outcome == Battle.Outcome.HEROES_WIN:
+			wins += 1
+		hp_ok = hp_ok and (skeleton.is_down() or warrior.is_down())
+		for moves in battle.rounds:
+			for i in moves.size():
+				var move: Dictionary = moves[i]
+				moves_ok = moves_ok and move["actor"] != move["target"] and move["damage"] >= 0 					and move["target_hp"] >= 0 and move["downed"] == (move["target_hp"] == 0)
+				# The warrior (speed 5) always acts before the skeleton (speed 3).
+				if moves.size() == 2:
+					order_ok = order_ok and moves[0]["actor"] == warrior
+	expect(hp_ok, "a fight ends with one side down")
+	expect(moves_ok, "every move hits someone on the other side and records the HP left")
+	expect(order_ok, "the faster fighter moves first each round")
+	expect(wins == 200, "a full-HP warrior always beats one skeleton (won %d of 200)" % wins)
+
+	# A won fight gives the skeleton's XP to the warrior.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var warrior = Hero.from_class(warrior_class, "Bram")
+	var battle = Battle.fight([warrior], [Monster.from_type(skeleton_type, rng)], rng)
+	expect(battle.rewards() == {"xp": 5, "loot": []}, "beating a skeleton is worth 5 XP")
+	battle.award_xp()
+	expect(warrior.xp == 5, "the warrior gets the XP after winning")
+	var last_moves: Array = battle.rounds[-1]
+	expect(last_moves[-1]["downed"], "the last move of a won fight downs the last monster")
+
+	# A hero at 1 HP against three skeletons loses, and gets nothing.
+	var weak = Hero.from_class(warrior_class, "Bram")
+	weak.hp = 1
+	var foes := [Monster.from_type(skeleton_type, rng), Monster.from_type(skeleton_type, rng), Monster.from_type(skeleton_type, rng)]
+	var lost = Battle.fight([weak], foes, rng)
+	expect(lost.outcome == Battle.Outcome.MONSTERS_WIN and weak.is_down(), "a beaten party loses the fight")
+	expect(lost.rewards()["xp"] == 0 and lost.award_xp().is_empty(), "a lost fight gives no XP")
+
+	# Same seed, same fight.
+	var a := RandomNumberGenerator.new()
+	a.seed = 33
+	var b := RandomNumberGenerator.new()
+	b.seed = 33
+	var fight_a = Battle.fight([Hero.from_class(warrior_class, "A")], [Monster.from_type(skeleton_type, a)], a)
+	var fight_b = Battle.fight([Hero.from_class(warrior_class, "A")], [Monster.from_type(skeleton_type, b)], b)
+	var damage_a := []
+	var damage_b := []
+	for moves in fight_a.rounds:
+		damage_a.append(moves.map(func(m): return m["damage"]))
+	for moves in fight_b.rounds:
+		damage_b.append(moves.map(func(m): return m["damage"]))
+	expect(damage_a == damage_b, "the same seed replays the same fight")
+
+	# Nobody can do damage: the fight stops as a draw.
+	var pacifist = Hero.from_dict({"max_hp": 5, "attack_min": 0, "attack_max": 0})
+	var wall = Monster.from_dict({"max_hp": 5, "attack_min": 0, "attack_max": 0})
+	var stuck = Battle.fight([pacifist], [wall], rng)
+	expect(stuck.outcome == Battle.Outcome.DRAW and stuck.rounds.size() == Battle.MAX_ROUNDS, "a fight nobody can win stops as a draw")
 
 
 func expect(condition: bool, description: String) -> void:

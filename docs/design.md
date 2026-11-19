@@ -82,10 +82,54 @@ You give orders at the start of each fight; the rest plays out automatically. Yo
 - **Hiring.** Recruit adventurers from the guild, each with a class, stats and starting traits.
 - **Moving.** You walk the party as one group, as the cartographer travelling with them.
 - **Formation.** Front row and back row, and who protects whom.
+- **Random encounters.** Each step has a chance of meeting a monster: for now 10%, always a skeleton (set in `data/generation/encounters.json`). Rolls use a seed from the floor, so a delve meets the same monsters if walked the same way. Taking the trapdoor or jumping on the map with the Move tool never triggers one. Later each dungeon gets its own monster list, with odds for each monster.
+- **Starting a fight.** When a monster appears, a pop-up shows it with a **Battle** button; the fight starts only when you press it. The fight then plays out on its own and a **battle log** opens over the map, listing every round and move (who hit whom, for how much, HP left, who went down) and the result. The log plays back one move at a time: HP bars drop as hits land, and Skip shows the rest at once. The monster stays in view with its HP through the fight, and fades when it goes down; it leaves when the log is closed. Attackers hop toward the other side (a hero's card up, the monster down) and whoever is hit shakes side to side. For now every move is a basic attack. Winning gives each standing hero the monsters' XP. If the party falls, the log's button takes you back to town. Damage carries on after the fight.
 - **Pre-fight orders.** When a fight starts you see what you face, then set orders: focus a target, use a big skill, play defensive, flee. After that the fight resolves on its own.
 - **Scouting pays.** Enemy types you've noted on the map let you plan orders better.
-- **Lasting effects.** Fatigue, injuries and supplies carry through a run, so the trip back from a deep floor is tense.
+- **Lasting effects.** Injuries and supplies carry through a run, so the trip back from a deep floor is tense.
+- **Fatigue (idea, later).** The party tires as it walks, so a long trip wears it down. Not part of the first combat build; it may be its own bar or drain stamina.
 - **Sleeping at camp (idea).** The party can sleep at a camp spot to recover, but risks an ambush while asleep. Safer marked camp spots make the risk smaller.
+
+## Heroes
+
+Each hero in the party has a sheet. Heroes live in data (save files and the guild roster), not in code.
+
+- **Name.** Shown in the party bar and the fight log. Picked at random from a name list in a data file; you can rename a hero.
+- **Gender.** Male, female or unspecified. Sets the portrait and how the game refers to the hero.
+- **Class.** Sets starting values and which skills a hero can learn. Classes live in a data file. None are designed yet.
+- **HP (red).** Health. At 0 the hero is down for the rest of the fight. Restored at the inn.
+- **SP (green).** Stamina, spent on physical skills.
+- **MP (blue).** Magicka, spent on spells. Recovers slowly; fully restored at the inn.
+- **Defense (DEF).** A percentage cut to damage taken: DEF 20 means a hit does 20% less.
+- **Basic attack.** Every hero has one: a damage range, rolled with the fight's seed, before the target's DEF. Weapons add to it later.
+- **Speed.** Turn order in a fight: highest acts first. Ties are broken by a seeded roll, so a fight replays the same way. This is a placeholder; a better turn order is an open question.
+- **Aggro.** How likely enemies are to target this hero: the chance is the hero's aggro divided by the whole party's aggro. Skills can raise it (a taunt) or lower it (hiding).
+- **Skills.** Two lists: **combat** skills, used through the pre-fight orders, and **exploration** skills, used in the dungeon (spot traps, pick locks, a light that shows more of the grid, a pulse that reveals secrets).
+- **Level and XP.** Heroes start at level 1. For now every level costs 100 XP and a level changes nothing else; how XP is earned and what a level gives are worked out later in Phase 2.
+- **Gear (later).** Equipment slots come with loot and crafting. The sheet keeps room for them.
+- **Traits (later).** Kept as an empty list for now, so saves don't break when traits arrive.
+
+### Classes
+
+Each class is a file in `data/classes`, holding its starting numbers and skills. A new hero starts at level 1 with full bars.
+
+- **Warrior.** Stands in front and takes the hits. HP 20, SP 10, MP 0, DEF 5, speed 5, aggro 10, basic attack 4–6. No skills yet.
+  - **Power Strike (idea).** Costs SP; a harder hit.
+  - **Taunt (idea).** Costs SP; raises the warrior's aggro for the fight.
+
+## Monsters
+
+Monsters share the fight half of the hero sheet: HP, SP, MP, DEF, speed, aggro, a basic attack, combat skills and a level. Heroes and monsters use the same rules for damage, DEF, targeting by aggro, and one shared turn order.
+
+- **Aggro works both ways.** Heroes pick which monster to hit by the monsters' aggro, the same way monsters pick heroes.
+- **Types.** Each monster type is a file in `data/monsters`, holding its name, picture, starting numbers and rewards. A starting number can be a range, like HP 5–10, rolled with the floor's seed when the monster is made, so two of the same type can differ.
+- **Rewards.** Beating a monster gives the party its XP and its loot. Loot is a list of item ids, empty until items arrive.
+- **Not on monsters:** gender, class, exploration skills, gear and traits.
+- **Open:** what a monster's level changes, and how XP is split across the party.
+
+### Monster types
+
+- **Skeleton.** Level 1, HP 5–10, SP 0, MP 0, DEF 0, speed 3, aggro 5, basic attack 1–3. No skills. Gives 5 XP, no loot yet.
 
 ## Hero growth
 
@@ -122,6 +166,7 @@ Crafting stays light, in the Etrian style: selling materials unlocks new gear in
 - [ ] Permadeath for heroes, or only injuries?
 - [ ] How many heroes in a party, and how many on the guild roster?
 - [ ] Is there a story or setting, or is it a pure contract loop?
+- [ ] A better turn order. For now it's fastest first, with ties broken by a seeded roll. Ideas to look at: some randomness on every turn, fast heroes acting more often (a timeline or initiative bar), or skills and gear that shift the order.
 
 **Parking lot (future ideas)**
 

@@ -51,4 +51,6 @@ godot --headless --path . --script res://tests/run_tests.gd
 - Basement wall, stone floor, stairs and trapdoor textures: *Pixel Art Medieval Interiors* by Acasas.
 - Wall torch animation: *Old Castle sprite Set* by Acasas.
 - Town menu icons and picture (`assets/ui/icons/`, `assets/ui/town_picture.png`): *Strategy Game Icons* pack (author not named in the pack files).
+- Class badges (`assets/ui/classes/`): *RPG Class Badges* pack (author not named in the pack files), shrunk to 256 px.
+- Monster pictures (`assets/monsters/`): *Fantasy Characters* pack (author not named in the pack files), shrunk to 512 px wide.
 - Scroll menu buttons (`assets/ui/scroll_button.png`): *Pixelart Medieval UI Pack* (author not named in the pack files).

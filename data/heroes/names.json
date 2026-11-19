@@ -1,0 +1,5 @@
+{
+	"male": ["Bram", "Oswin", "Tobin", "Garrick", "Edric", "Hal", "Corin", "Aldo"],
+	"female": ["Mara", "Isolde", "Wren", "Brenna", "Elsie", "Tamsin", "Hilde", "Neve"],
+	"unspecified": ["Ash", "Rook", "Sable", "Quill", "Ember", "Fen", "Lark", "Marlow"]
+}

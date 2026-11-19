@@ -1,0 +1,19 @@
+{
+	"id": "warrior",
+	"name": "Warrior",
+	"description": "Stands in front and takes the hits.",
+	"icon": "res://assets/ui/classes/warrior.png",
+	"start": {
+		"max_hp": 20,
+		"max_sp": 10,
+		"max_mp": 0,
+		"defense": 5,
+		"speed": 5,
+		"aggro": 10,
+		"attack_min": 4,
+		"attack_max": 6
+	},
+	"combat_skills": [],
+	"exploration_skills": [],
+	"level_up": {}
+}

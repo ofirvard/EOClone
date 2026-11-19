@@ -10,6 +10,12 @@ const PlayerMap = preload("res://src/rules/player_map.gd")
 const Edges = preload("res://src/rules/edges.gd")
 const Coords = preload("res://src/rules/coords.gd")
 const DungeonView3D = preload("res://src/view/dungeon_view_3d.gd")
+const Hero = preload("res://src/rules/hero.gd")
+const Motion = preload("res://src/view/motion.gd")
+const Monster = preload("res://src/rules/monster.gd")
+const Encounters = preload("res://src/rules/encounters.gd")
+const Battle = preload("res://src/rules/battle.gd")
+const PartyBar = preload("res://src/view/party_bar.gd")
 
 const SETTINGS_PATH := "res://data/generation/floor.json"
 const TOWN_SCENE := "res://scenes/main_menu.tscn"
@@ -31,6 +37,8 @@ const STAIRS_DOWN := Color("a33b2b")
 const MOVE_KEYS: Array[Key] = [KEY_W, KEY_S, KEY_Q, KEY_E, KEY_A, KEY_D]
 const HOLD_DELAY := 0.3          ## Pause before a held key starts repeating.
 const REPEAT_INTERVAL := 0.2     ## Time between steps while held.
+const MOVE_DELAY := 0.6          ## Seconds between moves as the battle log plays.
+const MONSTER_DOWN := Color(1, 1, 1, 0.25)   ## A downed monster fades to this.
 
 const LABEL_BAND := Vector2(28, 20)   ## Left strip for row numbers, top strip for column letters.
 const MAX_ZOOM := 8.0            ## Zoom 1 fits the whole floor.
@@ -85,11 +93,46 @@ var _up_button: Button               ## Hovers over the 3D view while you stand 
 var _map_origin := Vector2.ZERO
 var _map_cell := 0.0
 
+var _party: Array = []               ## Heroes on this delve.
+var _party_bar: PartyBar
+
+var _encounter_settings: Dictionary
+var _monster_types := {}             ## Type id -> monster type data.
+var _encounter_rng := RandomNumberGenerator.new()   ## Seeded per floor.
+var _monster                        ## The monster met, while the encounter pop-up is open.
+var _encounter: Control              ## Pop-up over the 3D view when a monster appears.
+var _encounter_picture: TextureRect
+var _encounter_card: Control         ## The monster's card (picture, name, HP, button).
+var _monster_tween: Tween            ## The card's running hop or shake.
+var _encounter_text: Label
+var _encounter_button: Button        ## "Battle"; hidden once the fight starts.
+var _battle_log: Control             ## Over the map: every round and move of the last fight.
+var _battle_log_title: Label
+var _battle_log_text: RichTextLabel
+var _battle_log_button: Button
+var _party_fell := false             ## The last fight was lost: closing the log goes to town.
+var _battle_playing := false         ## The log is still adding moves.
+var _battle_skip := false            ## Skip pressed: add the rest at once.
+var _battle_playback := 0            ## Bumped per fight and per floor, so an old playback stops.
+
 
 func _ready() -> void:
 	_settings = FloorGenerator.load_settings(SETTINGS_PATH)
+	_encounter_settings = Encounters.load_settings()
+	_monster_types = Monster.load_types()
 	_build_ui()
+	_start_party()
 	_generate(randi())
+
+
+## For now every delve brings one new warrior. Later the party comes from
+## the guild roster.
+func _start_party() -> void:
+	var classes := Hero.load_classes()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	_party = [Hero.random_from_class(classes.get("warrior", {}), Hero.load_names(), rng)]
+	_party_bar.show_party(_party, classes)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -99,6 +142,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not event.pressed:
 		if key == _held_key:
 			_held_key = KEY_NONE
+		return
+
+	if _battle_log.visible:
+		if key in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_ESCAPE]:
+			_close_battle_log()
+		return
+
+	if _encounter.visible:
+		if key in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
+			_start_battle()
 		return
 
 	if _prompt.visible:
@@ -187,6 +240,13 @@ func _load_floor(depth: int, from_below: bool = false) -> void:
 	_map = _maps[depth]
 	_seed_edit.text = str(_delve_seed)
 	_prompt.hide()
+	_encounter.hide()
+	_battle_log.hide()
+	_battle_playback += 1
+	_battle_playing = false
+	_party_bar.refresh()
+	_monster = null
+	_encounter_rng.seed = Encounters.floor_seed(_grid.seed_value)
 	_view_3d.build(_grid)
 	if from_below and _grid.in_bounds(_grid.stairs_down):
 		_view_cell = _grid.stairs_down
@@ -223,6 +283,8 @@ func _turn(amount: int) -> void:
 
 
 func _step(direction: int) -> void:
+	if _encounter.visible or _battle_log.visible:
+		return
 	var next := _view_cell + FloorGrid.DIRECTIONS[direction]
 	if next == _grid.stairs_up and _at_stairs_up():
 		_ask_up()
@@ -230,13 +292,206 @@ func _step(direction: int) -> void:
 		_map.walk(_view_cell, next)
 		_view_cell = next
 		_update_viewpoint()
-		_arrived()
+		# No monsters on the trapdoor, so its pop-up always shows.
+		if _view_cell == _grid.stairs_down or not _try_encounter():
+			_arrived()
 
 
 func _update_viewpoint() -> void:
 	_view_3d.set_viewpoint(_view_cell, _facing)
 	_keep_in_view(_view_cell)
 	_map_changed()
+
+
+# --- Encounters -------------------------------------------------------------
+
+## Rolls for a monster after a step. If one appears, shows it and returns true.
+func _try_encounter() -> bool:
+	var type_id := Encounters.roll(_encounter_settings, _encounter_rng)
+	if type_id == "" or not _monster_types.has(type_id):
+		return false
+	var type_data: Dictionary = _monster_types[type_id]
+	_monster = Monster.from_type(type_data, _encounter_rng)
+	var picture: String = type_data.get("picture", "")
+	_encounter_picture.texture = load(picture) if picture != "" and ResourceLoader.exists(picture) else null
+	_encounter_text.text = "A %s appears!\nHP %d" % [_monster.name, _monster.hp]
+	_encounter_picture.modulate = Color.WHITE
+	_encounter_button.show()
+	_fit_encounter_card()
+	_held_key = KEY_NONE
+	_prompt.hide()
+	_encounter.show()
+	_update_floor_buttons()
+	return true
+
+
+## Battle pressed: the fight is worked out at once, then its log opens over
+## the map and plays it back move by move.
+func _start_battle() -> void:
+	if _monster == null:
+		return
+	var start_hp := {}
+	for hero in _party:
+		start_hp[hero] = hero.hp
+	# The monster stays in view through the fight; only the button goes, and
+	# the card is resized once, before anything moves.
+	_show_monster_hp(_monster, _monster.hp)
+	_encounter_button.hide()
+	_fit_encounter_card()
+	var battle = Battle.fight(_party, [_monster], _encounter_rng)
+	var levels: Dictionary = battle.award_xp()
+	_monster = null
+	_play_battle_log(battle, levels, start_hp)
+
+
+## Opens the log and adds one move every MOVE_DELAY seconds. A hero's card
+## hops forward as they attack, and HP bars drop as hits land. The log's
+## button skips to the end while it plays.
+func _play_battle_log(battle, levels: Dictionary, start_hp: Dictionary) -> void:
+	_battle_playback += 1
+	var playback := _battle_playback
+	_battle_skip = false
+	_battle_playing = true
+	var names := " & ".join(battle.heroes.map(func(f): return f.name))
+	var foes := " & ".join(battle.monsters.map(func(f): return f.name))
+	_battle_log_title.text = "Battle: %s vs %s" % [names, foes]
+	_battle_log_text.text = ""
+	_battle_log_button.text = "Skip"
+	_held_key = KEY_NONE
+	_battle_log.show()
+	_update_floor_buttons()
+	for hero in start_hp:
+		_party_bar.show_hp(hero, start_hp[hero])
+
+	for r in battle.rounds.size():
+		_battle_log_text.append_text("[b]Round %d[/b]\n" % (r + 1))
+		for move in battle.rounds[r]:
+			var by_hero: bool = battle.heroes.has(move["actor"])
+			_battle_log_text.append_text(_move_line(move, by_hero) + "\n")
+			if battle.heroes.has(move["target"]):
+				_party_bar.show_hp(move["target"], move["target_hp"])
+			else:
+				_show_monster_hp(move["target"], move["target_hp"])
+			if not _battle_skip:
+				# The attacker hops toward the other side; whoever is hit shakes.
+				if by_hero:
+					_party_bar.nudge(move["actor"])
+					if move["downed"]:
+						_fade_monster()
+					elif move["damage"] > 0:
+						_shake_monster()
+				else:
+					_hop_monster()
+					if move["damage"] > 0:
+						_party_bar.shake(move["target"])
+				var waited := 0.0
+				while waited < MOVE_DELAY and not _battle_skip:
+					await get_tree().process_frame
+					waited += get_process_delta_time()
+				if playback != _battle_playback:
+					return                  # The log was closed by a new floor.
+		_battle_log_text.append_text("\n")
+
+	_battle_log_text.append_text(_battle_result(battle, levels))
+	_party_bar.refresh()
+	# After a skip, the picture jumps straight to how the fight left it.
+	if battle.monsters[0].is_down():
+		_stop_monster_motion()
+		_encounter_picture.modulate = MONSTER_DOWN
+	_party_fell = battle.outcome == Battle.Outcome.MONSTERS_WIN
+	_battle_log_button.text = "Return to town" if _party_fell else "Continue"
+	_battle_playing = false
+
+
+## The monster's HP under its picture, as the log plays.
+func _show_monster_hp(monster, hp: int) -> void:
+	_encounter_text.text = "%s\nHP %d/%d" % [monster.name, hp, monster.max_hp]
+
+
+## The monster's card shakes side to side after it's hit.
+func _shake_monster() -> void:
+	_monster_tween = Motion.shake(_encounter_card, _stop_monster_motion())
+
+
+## The monster's card hops down, toward the party, as it attacks.
+func _hop_monster() -> void:
+	_monster_tween = Motion.hop(_encounter_card, _stop_monster_motion(), Vector2.DOWN)
+
+
+## The monster goes down: a last shake, then it fades out (it stays faded
+## until the log is closed).
+func _fade_monster() -> void:
+	_shake_monster()
+	var tween := _encounter_picture.create_tween()
+	tween.tween_interval(Motion.SHAKE_TIME)
+	tween.tween_property(_encounter_picture, "modulate", MONSTER_DOWN, 0.4)
+
+
+## Stops the card's hop or shake, puts it back in the middle of the view
+## and returns that spot.
+func _stop_monster_motion() -> Vector2:
+	if _monster_tween != null and _monster_tween.is_valid():
+		_monster_tween.kill()
+	_encounter_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
+	return _encounter_card.position
+
+
+## Sizes the card to fit what it shows now, and holds that size, so HP text
+## changing width mid-fight never resizes (and so re-centers) it.
+func _fit_encounter_card() -> void:
+	_encounter_card.custom_minimum_size = Vector2.ZERO
+	_encounter_card.reset_size()
+	_encounter_card.custom_minimum_size = _encounter_card.get_combined_minimum_size()
+	_encounter_card.size = _encounter_card.custom_minimum_size
+	_stop_monster_motion()
+
+
+## The closing lines of the log: who won, XP and level-ups.
+func _battle_result(battle, levels: Dictionary) -> String:
+	var lines := PackedStringArray()
+	match battle.outcome:
+		Battle.Outcome.HEROES_WIN:
+			var xp: int = battle.rewards()["xp"]
+			lines.append("[b]Victory![/b]")
+			for hero in battle.heroes:
+				if hero.is_down():
+					continue
+				lines.append("%s gains %d XP." % [hero.name, xp])
+				if levels.get(hero, 0) > 0:
+					lines.append("[b]%s reaches level %d![/b]" % [hero.name, hero.level])
+		Battle.Outcome.MONSTERS_WIN:
+			lines.append("[b][color=#%s]The party has fallen.[/color][/b]" % WRONG.to_html(false))
+		_:
+			lines.append("[b]Neither side can win. Both back away.[/b]")
+	return "\n".join(lines)
+
+
+## One log line: who hit whom, for how much, and the HP left. Heroes' moves
+## in ink, monsters' in red.
+func _move_line(move: Dictionary, by_hero: bool) -> String:
+	var actor = move["actor"]
+	var target = move["target"]
+	var line := "%s attacks %s for %d." % [actor.name, target.name, move["damage"]]
+	if move["damage"] == 0:
+		line = "%s attacks %s but does no damage." % [actor.name, target.name]
+	line += "   %s HP %d/%d" % [target.name, move["target_hp"], target.max_hp]
+	if move["downed"]:
+		line += "   [b]%s is down![/b]" % target.name
+	return line if by_hero else "[color=#%s]%s[/color]" % [WRONG.to_html(false), line]
+
+
+## The log's button: skips to the end while the fight plays, then closes the
+## log, back to walking, or to town if the party fell.
+func _close_battle_log() -> void:
+	if _battle_playing:
+		_battle_skip = true
+		return
+	_battle_log.hide()
+	_encounter.hide()
+	if _party_fell:
+		get_tree().change_scene_to_file(TOWN_SCENE)
+		return
+	_arrived()
 
 
 # --- Going up and down ------------------------------------------------------
@@ -281,8 +536,9 @@ func _answer(yes: bool) -> void:
 ## The hovering buttons: "Delve deeper" on the trapdoor, "Go up" in front of
 ## the stairs up. Hidden while the pop-up is open.
 func _update_floor_buttons() -> void:
-	_deeper_button.visible = not _prompt.visible and _view_cell == _grid.stairs_down
-	_up_button.visible = not _prompt.visible and _at_stairs_up()
+	var free := not _prompt.visible and not _encounter.visible and not _battle_log.visible
+	_deeper_button.visible = free and _view_cell == _grid.stairs_down
+	_up_button.visible = free and _at_stairs_up()
 
 
 ## True when you stand on the cell the stairs up open onto.
@@ -422,7 +678,7 @@ func _grid_pos(pos: Vector2) -> Vector2:
 ## Move tool: tap a cell you've walked to jump back there; tap your own cell
 ## to turn. With the true layout showing, any floor cell works.
 func _jump_to(cell: Vector2i) -> void:
-	if not _grid.is_walkable(cell):
+	if _encounter.visible or _battle_log.visible or not _grid.is_walkable(cell):
 		return
 	if not _show_truth and not _map.is_visited(cell):
 		return
@@ -701,6 +957,14 @@ func _build_ui() -> void:
 	_canvas.resized.connect(_canvas.queue_redraw)
 	_canvas.gui_input.connect(_on_canvas_input)
 	map_row.add_child(_canvas)
+	_canvas.add_child(_build_battle_log())
+
+	# 3D view with the party bar under it.
+	var view_pane := VBoxContainer.new()
+	view_pane.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view_pane.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	view_pane.add_theme_constant_override("separation", 8)
+	_panes.add_child(view_pane)
 
 	var frame := PanelContainer.new()
 	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -709,7 +973,10 @@ func _build_ui() -> void:
 	frame_style.bg_color = INK
 	frame_style.set_content_margin_all(3)
 	frame.add_theme_stylebox_override("panel", frame_style)
-	_panes.add_child(frame)
+	view_pane.add_child(frame)
+
+	_party_bar = PartyBar.new()
+	view_pane.add_child(_party_bar)
 
 	var container := SubViewportContainer.new()
 	container.stretch = true
@@ -777,8 +1044,108 @@ func _build_floor_overlay() -> Control:
 	_up_button = _hover_button("Go up", _go_up)
 	overlay.add_child(_up_button)
 
+	overlay.add_child(_build_encounter_popup())
+
 	_prompt.hide()
 	return overlay
+
+
+## The pop-up shown when a monster appears: its picture, name and HP, and
+## the Battle button that starts the fight. Hidden at first.
+func _build_encounter_popup() -> Control:
+	# A plain full-size holder rather than a CenterContainer: the card is kept
+	# centered by its anchors, so no container moves it back mid-hop or
+	# mid-shake.
+	var holder := Control.new()
+	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var box := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = PAPER
+	style.border_color = INK
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(16)
+	box.add_theme_stylebox_override("panel", style)
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	holder.add_child(box)
+	_encounter_card = box
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	box.add_child(column)
+
+	_encounter_picture = TextureRect.new()
+	_encounter_picture.custom_minimum_size = Vector2(180, 220)
+	_encounter_picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_encounter_picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_encounter_picture.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	column.add_child(_encounter_picture)
+
+	_encounter_text = _label("")
+	_encounter_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_encounter_text.add_theme_font_size_override("font_size", 22)
+	column.add_child(_encounter_text)
+
+	_encounter_button = Button.new()
+	_encounter_button.text = "Battle"
+	_encounter_button.focus_mode = Control.FOCUS_NONE
+	_encounter_button.custom_minimum_size = Vector2(140, 44)
+	_encounter_button.add_theme_font_size_override("font_size", 20)
+	_encounter_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_encounter_button.pressed.connect(_start_battle)
+	column.add_child(_encounter_button)
+
+	_encounter = holder
+	_encounter.hide()
+	return holder
+
+
+## The battle log, covering the map: a title, the rounds (scrolls if long)
+## and a button to close it. Hidden at first.
+func _build_battle_log() -> Control:
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP     # The map underneath can't be drawn on.
+	var style := StyleBoxFlat.new()
+	style.bg_color = PAPER
+	style.border_color = INK
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(16)
+	panel.add_theme_stylebox_override("panel", style)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	panel.add_child(column)
+
+	_battle_log_title = _label("")
+	_battle_log_title.add_theme_font_size_override("font_size", 22)
+	column.add_child(_battle_log_title)
+
+	_battle_log_text = RichTextLabel.new()
+	_battle_log_text.bbcode_enabled = true
+	_battle_log_text.scroll_active = true
+	_battle_log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_battle_log_text.add_theme_color_override("default_color", INK)
+	_battle_log_text.add_theme_font_size_override("normal_font_size", 16)
+	_battle_log_text.add_theme_font_size_override("bold_font_size", 16)
+	column.add_child(_battle_log_text)
+
+	_battle_log_button = Button.new()
+	_battle_log_button.text = "Continue"
+	_battle_log_button.focus_mode = Control.FOCUS_NONE
+	_battle_log_button.custom_minimum_size = Vector2(160, 44)
+	_battle_log_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_battle_log_button.pressed.connect(_close_battle_log)
+	column.add_child(_battle_log_button)
+
+	_battle_log = panel
+	_battle_log.hide()
+	return panel
 
 
 ## A button floating near the bottom middle of the 3D view, hidden at first.
