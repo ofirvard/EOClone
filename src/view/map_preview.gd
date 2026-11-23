@@ -1,8 +1,10 @@
 extends Control
-## Exploration demo: the player's map next to a first-person 3D window.
-## Footsteps fill in on their own; walls are drawn by hand with the Wall tool
-## by connecting the dots at cell corners. Toggle "True layout" to compare with the
-## real floor.
+## The dungeon screen: the player's map next to a first-person 3D view, with
+## the party's cards under it. Footsteps fill in on their own; walls are drawn
+## by hand with the Pencil by connecting the dots at cell corners. Monsters
+## may appear as you walk (see Encounters), and a fight plays out in a log
+## over the map. The seed bar and "True layout" are testing tools from
+## Phase 1.
 
 const FloorGenerator = preload("res://src/rules/floor_generator.gd")
 const FloorGrid = preload("res://src/rules/floor_grid.gd")
@@ -79,6 +81,7 @@ var _panes: BoxContainer
 var _canvas: Control
 var _view_3d: DungeonView3D
 var _seed_edit: LineEdit
+var _seed_buttons: Array[Button] = []   ## Go and New floor; off during a fight.
 var _info: Label
 var _truth_toggle: CheckButton
 var _tool_buttons: Array[Button] = []
@@ -120,8 +123,8 @@ func _ready() -> void:
 	_generate(randi())
 
 
-## The party for this delve: every guild hero who isn't down (Manage party
-## will choose later). With no heroes there are no encounters.
+## The party for this delve: everyone in the guild's party who isn't down
+## (picked in Manage party). With no heroes there are no encounters.
 func _start_party() -> void:
 	_party = Game.guild.delve_party()
 	_party_bar.show_party(_party, Hero.load_classes())
@@ -262,6 +265,8 @@ func _map_changed() -> void:
 
 
 func _on_seed_submitted(text: String) -> void:
+	if _in_fight():
+		return
 	text = text.strip_edges()
 	# Any text works as a seed; numbers are used as-is.
 	_generate(int(text) if text.is_valid_int() else text.hash())
@@ -275,7 +280,7 @@ func _turn(amount: int) -> void:
 
 
 func _step(direction: int) -> void:
-	if _encounter.visible or _battle_log.visible:
+	if _in_fight():
 		return
 	var next := _view_cell + FloorGrid.DIRECTIONS[direction]
 	if next == _grid.stairs_up and _at_stairs_up():
@@ -486,9 +491,19 @@ func _answer(yes: bool) -> void:
 ## The hovering buttons: "Delve deeper" on the trapdoor, "Go up" in front of
 ## the stairs up. Hidden while the pop-up is open.
 func _update_floor_buttons() -> void:
-	var free := not _prompt.visible and not _encounter.visible and not _battle_log.visible
+	var free := not _prompt.visible and not _in_fight()
 	_deeper_button.visible = free and _view_cell == _grid.stairs_down
 	_up_button.visible = free and _at_stairs_up()
+	# A new floor mid-fight would skip it (or, after a loss, leave the party
+	# down in the dungeon), so the seed bar is off until the log is closed.
+	_seed_edit.editable = not _in_fight()
+	for button in _seed_buttons:
+		button.disabled = _in_fight()
+
+
+## True while monsters are showing or the battle log is open.
+func _in_fight() -> bool:
+	return _encounter.visible or _battle_log.visible
 
 
 ## True when you stand on the cell the stairs up open onto.
@@ -628,7 +643,7 @@ func _grid_pos(pos: Vector2) -> Vector2:
 ## Move tool: tap a cell you've walked to jump back there; tap your own cell
 ## to turn. With the true layout showing, any floor cell works.
 func _jump_to(cell: Vector2i) -> void:
-	if _encounter.visible or _battle_log.visible or not _grid.is_walkable(cell):
+	if _in_fight() or not _grid.is_walkable(cell):
 		return
 	if not _show_truth and not _map.is_visited(cell):
 		return
@@ -819,8 +834,11 @@ func _build_ui() -> void:
 	var reroll := Button.new()
 	reroll.text = "New floor"
 	reroll.focus_mode = Control.FOCUS_NONE
-	reroll.pressed.connect(func(): _generate(randi()))
+	reroll.pressed.connect(func():
+		if not _in_fight():
+			_generate(randi()))
 	bar.add_child(reroll)
+	_seed_buttons = [go, reroll]
 
 	_truth_toggle = CheckButton.new()
 	_truth_toggle.text = "True layout"

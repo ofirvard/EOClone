@@ -1,7 +1,6 @@
 extends RefCounted
 ## The guild: every hero you've hired (the roster), and which of them are in
-## the party that goes on delves. Kept for the whole session; saving comes
-## later.
+## the party that goes on delves. Saved with Save in town (see SaveGame).
 
 const Hero = preload("res://src/rules/hero.gd")
 

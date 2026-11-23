@@ -485,7 +485,10 @@ func test_skeleton() -> void:
 
 func test_encounters() -> void:
 	var settings := Encounters.load_settings()
-	expect(is_equal_approx(settings["chance"], 0.1) and settings["monster"] == "skeleton", "walking meets a skeleton 10% of the time")
+	# The odds are tuned in data/generation/encounters.json; these checks
+	# follow whatever it says.
+	var chance: float = settings["chance"]
+	expect(chance > 0.0 and chance <= 1.0 and settings["monster"] == "skeleton", "walking can meet a skeleton")
 	expect(Monster.load_types().has(settings["monster"]), "the encounter monster is a real monster type")
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
@@ -496,7 +499,7 @@ func test_encounters() -> void:
 		if found != "":
 			met += 1
 			only_skeletons = only_skeletons and found == "skeleton"
-	expect(met > 420 and met < 580, "about 1 step in 10 meets a monster (%d of 5000)" % met)
+	expect(absf(met / 5000.0 - chance) < 0.02, "about %d%% of steps meet a monster (%d of 5000)" % [roundi(chance * 100), met])
 	expect(only_skeletons, "every encounter is a skeleton")
 	expect(Encounters.roll({"chance": 0.0, "monster": "skeleton"}, rng) == "", "chance 0 never meets anything")
 	expect(Encounters.roll({"chance": 1.0, "monster": "skeleton"}, rng) == "skeleton", "chance 1 always meets the monster")
@@ -520,8 +523,11 @@ func test_encounters() -> void:
 		else:
 			other_size = true
 	expect(not other_size, "a skeleton group is 1, 2 or 3")
-	expect(sizes[2] > 2800 and sizes[2] < 3200 and sizes[3] > 2800 and sizes[3] < 3200, "2 and 3 skeletons each come 30%% of the time (%s)" % sizes)
-	expect(sizes[1] > 3800 and sizes[1] < 4200, "a lone skeleton comes 40%% of the time")
+	var group_chances: Dictionary = settings["group_chances"]
+	var odds := {2: float(group_chances.get("2", 0.0)), 3: float(group_chances.get("3", 0.0))}
+	odds[1] = 1.0 - odds[2] - odds[3]
+	for n in [1, 2, 3]:
+		expect(absf(sizes[n] / 10000.0 - odds[n]) < 0.02, "a group of %d comes about %d%% of the time (%d of 10000)" % [n, roundi(odds[n] * 100), sizes[n]])
 	expect(Encounters.roll_group_size({}, rng) == 1 and Encounters.roll_group_size({"group_chances": {"2": 1.0}}, rng) == 2, "no group chances means alone; chance 1 always gives the group")
 	var skeleton: Dictionary = Monster.load_types()["skeleton"]
 	var three := Encounters.spawn_group(skeleton, 3, rng)
@@ -669,6 +675,22 @@ func test_save_game() -> void:
 		var b = loaded.heroes[0]
 		expect(b.name == a.name and b.hp == a.hp and b.level == a.level and b.xp == a.xp and b.class_id == a.class_id and b.gender == a.gender, "a loaded hero keeps name, HP, level, XP, class and gender")
 		expect(loaded.party == [loaded.heroes[2], loaded.heroes[0]], "the loaded party has the same heroes in order")
+	guild.heroes[1].gain_xp(40)
+	expect(SaveGame.write(guild, path), "saving again over an old save works")
+	var again = SaveGame.read(path)
+	expect(again != null and again.heroes[1].xp == guild.heroes[1].xp, "the newer save replaces the old one")
+	expect(not FileAccess.file_exists(path + ".tmp"), "no temporary file is left behind")
+
+	# A broken save is kept aside before anything can overwrite it.
+	var broken_file := FileAccess.open(path, FileAccess.WRITE)
+	broken_file.store_string("{\"guild\": ")
+	broken_file.close()
+	var broken_copy := SaveGame.broken_path(path)
+	expect(broken_copy == "user://test_save.broken.json", "a broken save is kept next to it as .broken.json")
+	expect(SaveGame.read(path) == null, "a broken save file loads nothing")
+	expect(FileAccess.file_exists(broken_copy) and FileAccess.get_file_as_string(broken_copy) == "{\"guild\": ", "the broken save is copied aside unchanged")
+	DirAccess.remove_absolute(broken_copy)
+
 	DirAccess.remove_absolute(path)
 	expect(SaveGame.read(path) == null, "no save file loads nothing")
 	expect(SaveGame.guild_from_text("not json") == null and SaveGame.guild_from_text("[1]") == null and SaveGame.guild_from_text("{}") == null, "a broken save loads nothing")

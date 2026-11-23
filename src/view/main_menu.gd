@@ -8,11 +8,11 @@ extends Control
 ## With "show_party": true the party's hero cards sit at the bottom left of
 ## the picture.
 
-## The menu's data file; each scene using this script sets its own.
 const DUNGEON_SCENE := "res://scenes/map_preview.tscn"
 const PartyBar = preload("res://src/view/party_bar.gd")
 const Hero = preload("res://src/rules/hero.gd")
 
+## The menu's data file; each scene using this script sets its own.
 @export_file("*.json") var places_path := "res://data/town/places.json"
 
 const PAPER := Color("efe4c8")

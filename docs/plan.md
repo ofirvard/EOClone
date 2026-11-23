@@ -36,7 +36,7 @@ Walk a generated floor in first person and draw the map by hand. Built and teste
 
 Encounters while exploring, settled by orders you give before the fight.
 
-- A small party with fixed roles (no classes yet), no row
+- A party of up to 5 heroes picked in the guild (one class so far, the Warrior), no rows
 - Enemies defined in data files, placed by the generator, some seen roaming
 - Pre-fight screen: see the enemies, pick orders (focus a target, big skill, defend, flee)
 - The fight resolves on its own and shows what happened

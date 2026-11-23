@@ -75,7 +75,6 @@ func roll_attack(rng: RandomNumberGenerator) -> int:
 	return rng.randi_range(attack_min, attack_max)
 
 
-## Every bar full; a downed fighter is back on their feet.
 ## Brings a downed fighter back with `amount` HP (at least 1, at most
 ## max HP). Does nothing to one who's standing. Returns true if revived.
 func revive(amount := 1) -> bool:
@@ -85,6 +84,7 @@ func revive(amount := 1) -> bool:
 	return true
 
 
+## Every bar full; a downed fighter is back on their feet.
 func rest() -> void:
 	hp = max_hp
 	sp = max_sp
