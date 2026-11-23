@@ -1,10 +1,19 @@
 extends Control
-## Town menu: the places in town as a list on the left, each with an icon,
-## and a big picture on the right. Places and the picture come from
-## data/town/places.json. A place with a "scene" opens it; the rest do
-## nothing yet.
+## A town menu: entries as a list on the left, each with an icon, and a big
+## picture on the right. Entries and the picture come from a data file
+## (data/town/places.json for the town, data/town/guild.json for the guild
+## hall). An entry with a "scene" opens it, one with an "action" does it
+## ("save" saves the game, "delve" enters the dungeon if there's a party);
+## the rest do nothing yet.
+## With "show_party": true the party's hero cards sit at the bottom left of
+## the picture.
 
-const PLACES_PATH := "res://data/town/places.json"
+## The menu's data file; each scene using this script sets its own.
+const DUNGEON_SCENE := "res://scenes/map_preview.tscn"
+const PartyBar = preload("res://src/view/party_bar.gd")
+const Hero = preload("res://src/rules/hero.gd")
+
+@export_file("*.json") var places_path := "res://data/town/places.json"
 
 const PAPER := Color("efe4c8")
 const INK := Color("3b2f22")
@@ -27,9 +36,11 @@ const SCROLL_EDGES := {"left": 10, "right": 10, "top": 5, "bottom": 9}
 const PAPER_MARGINS := {"left": 12, "right": 12, "top": 2, "bottom": 9}
 
 
-func _ready() -> void:
-	var data := _load_town(PLACES_PATH)
+var _list: VBoxContainer
+var _scroll: Texture2D
 
+
+func _ready() -> void:
 	var bg := ColorRect.new()
 	bg.color = PAPER
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -45,25 +56,102 @@ func _ready() -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	add_child(panel)
 
-	var list := VBoxContainer.new()
-	list.alignment = BoxContainer.ALIGNMENT_CENTER
-	list.add_theme_constant_override("separation", 10)
-	panel.add_child(list)
+	_list = VBoxContainer.new()
+	_list.alignment = BoxContainer.ALIGNMENT_CENTER
+	_list.add_theme_constant_override("separation", 6)
+	panel.add_child(_list)
 
-	var scroll := _scaled_texture(SCROLL_TEXTURE, SCROLL_SCALE)
+	_scroll = _scaled_texture(SCROLL_TEXTURE, SCROLL_SCALE)
+	_fill()
+
+
+## Adds the entries and the picture. Menus that build their list from
+## something other than a places file (like Recruit) override this.
+func _fill() -> void:
+	var data := _load_town(places_path)
 	for place in data.get("places", []):
-		var button := Button.new()
-		button.text = place.get("name", "?")
-		button.custom_minimum_size.y = BUTTON_HEIGHT
-		button.add_theme_font_size_override("font_size", FONT_SIZE)
-		_style_as_scroll(button, scroll)
-		_add_icon(button, place.get("icon", ""))
 		var scene: String = place.get("scene", "")
+		var action: String = place.get("action", "")
+		var on_press := Callable()
 		if scene != "":
-			button.pressed.connect(func(): get_tree().change_scene_to_file(scene))
-		list.add_child(button)
-
+			on_press = func(): get_tree().change_scene_to_file(scene)
+		elif action != "":
+			on_press = _do_action.bind(action)
+		_add_entry(place.get("name", "?"), place.get("icon", ""), on_press)
 	_add_picture(data.get("picture", ""))
+	if data.get("show_party", false):
+		_add_party()
+
+
+func _do_action(action: String) -> void:
+	match action:
+		"delve":
+			if Game.guild.can_delve():
+				get_tree().change_scene_to_file(DUNGEON_SCENE)
+			elif Game.guild.party.is_empty():
+				_notice("Your party is empty. Pick heroes in the Guild hall first.")
+			else:
+				_notice("Everyone in your party is down. Pick other heroes in the Guild hall.")
+		"save":
+			_notice("Game saved." if Game.save_game() else "Could not save the game.")
+		_:
+			push_warning("Unknown town action: %s" % action)
+
+
+## A short message at the top of the picture that fades away.
+func _notice(text: String) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", FONT_SIZE)
+	label.add_theme_color_override("font_color", PAPER)
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(PANEL, 0.85)
+	box.set_corner_radius_all(6)
+	box.set_content_margin_all(14)
+	label.add_theme_stylebox_override("normal", box)
+	var holder := CenterContainer.new()    # Centers it over the picture.
+	holder.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	holder.offset_left = LIST_WIDTH
+	holder.offset_top = 30
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(label)
+	add_child(holder)
+	var tween := holder.create_tween()
+	tween.tween_interval(1.5 + text.length() / 40.0)    # Longer messages stay longer.
+	tween.tween_property(holder, "modulate:a", 0.0, 0.6)
+	tween.tween_callback(holder.queue_free)
+
+
+## The party's hero cards, bottom left of the picture. Nothing if the party
+## is empty.
+func _add_party() -> void:
+	if Game.guild.party.is_empty():
+		return
+	var bar := PartyBar.new()
+	bar.align_left()
+	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.offset_left = LIST_WIDTH + 20
+	bar.offset_right = -20
+	bar.offset_bottom = -20
+	bar.offset_top = -20
+	add_child(bar)
+	bar.show_party(Game.guild.party, Hero.load_classes())
+
+
+## One scroll button in the list. `on_press` may be empty (does nothing).
+func _add_entry(text: String, icon: String, on_press: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size.y = BUTTON_HEIGHT
+	button.add_theme_font_size_override("font_size", FONT_SIZE)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_style_as_scroll(button, _scroll)
+	_add_icon(button, icon)
+	if on_press.is_valid():
+		button.pressed.connect(on_press)
+	_list.add_child(button)
+	return button
 
 
 ## The big picture, filling the space right of the list. It keeps its shape
@@ -105,7 +193,6 @@ func _add_icon(button: Button, path: String) -> void:
 	icon.offset_top = top + (paper_height - ICON_SIZE) / 2.0
 	icon.offset_bottom = icon.offset_top + ICON_SIZE
 	button.add_child(icon)
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 
 
 ## Dark ink on the parchment strip. The strip brightens under the pointer and

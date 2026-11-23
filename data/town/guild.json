@@ -1,0 +1,9 @@
+{
+	"picture": "",
+	"places": [
+		{"id": "recruit", "name": "Recruit", "scene": "res://scenes/recruit.tscn"},
+		{"id": "manage_party", "name": "Manage party", "scene": "res://scenes/manage_party.tscn"},
+		{"id": "train", "name": "Train"},
+		{"id": "back", "name": "Back to town", "scene": "res://scenes/main_menu.tscn"}
+	]
+}

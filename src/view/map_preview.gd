@@ -15,6 +15,7 @@ const Motion = preload("res://src/view/motion.gd")
 const Monster = preload("res://src/rules/monster.gd")
 const Encounters = preload("res://src/rules/encounters.gd")
 const Battle = preload("res://src/rules/battle.gd")
+const MonsterCards = preload("res://src/view/monster_cards.gd")
 const PartyBar = preload("res://src/view/party_bar.gd")
 
 const SETTINGS_PATH := "res://data/generation/floor.json"
@@ -38,7 +39,6 @@ const MOVE_KEYS: Array[Key] = [KEY_W, KEY_S, KEY_Q, KEY_E, KEY_A, KEY_D]
 const HOLD_DELAY := 0.3          ## Pause before a held key starts repeating.
 const REPEAT_INTERVAL := 0.2     ## Time between steps while held.
 const MOVE_DELAY := 0.6          ## Seconds between moves as the battle log plays.
-const MONSTER_DOWN := Color(1, 1, 1, 0.25)   ## A downed monster fades to this.
 
 const LABEL_BAND := Vector2(28, 20)   ## Left strip for row numbers, top strip for column letters.
 const MAX_ZOOM := 8.0            ## Zoom 1 fits the whole floor.
@@ -99,13 +99,8 @@ var _party_bar: PartyBar
 var _encounter_settings: Dictionary
 var _monster_types := {}             ## Type id -> monster type data.
 var _encounter_rng := RandomNumberGenerator.new()   ## Seeded per floor.
-var _monster                        ## The monster met, while the encounter pop-up is open.
-var _encounter: Control              ## Pop-up over the 3D view when a monster appears.
-var _encounter_picture: TextureRect
-var _encounter_card: Control         ## The monster's card (picture, name, HP, button).
-var _monster_tween: Tween            ## The card's running hop or shake.
-var _encounter_text: Label
-var _encounter_button: Button        ## "Battle"; hidden once the fight starts.
+var _monsters: Array = []            ## The monsters met, while the encounter is waiting for Battle.
+var _encounter: MonsterCards         ## The monster cards over the 3D view.
 var _battle_log: Control             ## Over the map: every round and move of the last fight.
 var _battle_log_title: Label
 var _battle_log_text: RichTextLabel
@@ -125,14 +120,11 @@ func _ready() -> void:
 	_generate(randi())
 
 
-## For now every delve brings one new warrior. Later the party comes from
-## the guild roster.
+## The party for this delve: every guild hero who isn't down (Manage party
+## will choose later). With no heroes there are no encounters.
 func _start_party() -> void:
-	var classes := Hero.load_classes()
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
-	_party = [Hero.random_from_class(classes.get("warrior", {}), Hero.load_names(), rng)]
-	_party_bar.show_party(_party, classes)
+	_party = Game.guild.delve_party()
+	_party_bar.show_party(_party, Hero.load_classes())
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -245,7 +237,7 @@ func _load_floor(depth: int, from_below: bool = false) -> void:
 	_battle_playback += 1
 	_battle_playing = false
 	_party_bar.refresh()
-	_monster = null
+	_monsters = []
 	_encounter_rng.seed = Encounters.floor_seed(_grid.seed_value)
 	_view_3d.build(_grid)
 	if from_below and _grid.in_bounds(_grid.stairs_down):
@@ -305,22 +297,24 @@ func _update_viewpoint() -> void:
 
 # --- Encounters -------------------------------------------------------------
 
-## Rolls for a monster after a step. If one appears, shows it and returns true.
+## Rolls for monsters after a step. If some appear (one type, maybe a
+## group), shows them and returns true.
 func _try_encounter() -> bool:
+	if _party.is_empty():
+		return false
 	var type_id := Encounters.roll(_encounter_settings, _encounter_rng)
 	if type_id == "" or not _monster_types.has(type_id):
 		return false
 	var type_data: Dictionary = _monster_types[type_id]
-	_monster = Monster.from_type(type_data, _encounter_rng)
-	var picture: String = type_data.get("picture", "")
-	_encounter_picture.texture = load(picture) if picture != "" and ResourceLoader.exists(picture) else null
-	_encounter_text.text = "A %s appears!\nHP %d" % [_monster.name, _monster.hp]
-	_encounter_picture.modulate = Color.WHITE
-	_encounter_button.show()
-	_fit_encounter_card()
+	var count := Encounters.roll_group_size(_encounter_settings, _encounter_rng)
+	_monsters = Encounters.spawn_group(type_data, count, _encounter_rng)
+	var pictures := {}
+	for monster in _monsters:
+		pictures[monster] = type_data.get("picture", "")
 	_held_key = KEY_NONE
 	_prompt.hide()
 	_encounter.show()
+	_encounter.show_monsters(_monsters, pictures)
 	_update_floor_buttons()
 	return true
 
@@ -328,19 +322,17 @@ func _try_encounter() -> bool:
 ## Battle pressed: the fight is worked out at once, then its log opens over
 ## the map and plays it back move by move.
 func _start_battle() -> void:
-	if _monster == null:
+	if _monsters.is_empty():
 		return
 	var start_hp := {}
 	for hero in _party:
 		start_hp[hero] = hero.hp
-	# The monster stays in view through the fight; only the button goes, and
-	# the card is resized once, before anything moves.
-	_show_monster_hp(_monster, _monster.hp)
-	_encounter_button.hide()
-	_fit_encounter_card()
-	var battle = Battle.fight(_party, [_monster], _encounter_rng)
+	# The monsters stay in view through the fight; only the heading and the
+	# button go.
+	_encounter.start_fight()
+	var battle = Battle.fight(_party, _monsters, _encounter_rng)
 	var levels: Dictionary = battle.award_xp()
-	_monster = null
+	_monsters = []
 	_play_battle_log(battle, levels, start_hp)
 
 
@@ -353,7 +345,8 @@ func _play_battle_log(battle, levels: Dictionary, start_hp: Dictionary) -> void:
 	_battle_skip = false
 	_battle_playing = true
 	var names := " & ".join(battle.heroes.map(func(f): return f.name))
-	var foes := " & ".join(battle.monsters.map(func(f): return f.name))
+	# A group is named by count ("3 Skeletons") to keep the title short.
+	var foes: String = battle.monsters[0].name if battle.monsters.size() == 1 			else "%d %ss" % [battle.monsters.size(), battle.monsters[0].name.rsplit(" ", true, 1)[0]]
 	_battle_log_title.text = "Battle: %s vs %s" % [names, foes]
 	_battle_log_text.text = ""
 	_battle_log_button.text = "Skip"
@@ -371,17 +364,17 @@ func _play_battle_log(battle, levels: Dictionary, start_hp: Dictionary) -> void:
 			if battle.heroes.has(move["target"]):
 				_party_bar.show_hp(move["target"], move["target_hp"])
 			else:
-				_show_monster_hp(move["target"], move["target_hp"])
+				_encounter.show_hp(move["target"], move["target_hp"])
 			if not _battle_skip:
 				# The attacker hops toward the other side; whoever is hit shakes.
 				if by_hero:
 					_party_bar.nudge(move["actor"])
 					if move["downed"]:
-						_fade_monster()
+						_encounter.fade(move["target"])
 					elif move["damage"] > 0:
-						_shake_monster()
+						_encounter.shake(move["target"])
 				else:
-					_hop_monster()
+					_encounter.hop(move["actor"])
 					if move["damage"] > 0:
 						_party_bar.shake(move["target"])
 				var waited := 0.0
@@ -394,56 +387,11 @@ func _play_battle_log(battle, levels: Dictionary, start_hp: Dictionary) -> void:
 
 	_battle_log_text.append_text(_battle_result(battle, levels))
 	_party_bar.refresh()
-	# After a skip, the picture jumps straight to how the fight left it.
-	if battle.monsters[0].is_down():
-		_stop_monster_motion()
-		_encounter_picture.modulate = MONSTER_DOWN
+	# After a skip, the cards jump straight to how the fight left them.
+	_encounter.settle()
 	_party_fell = battle.outcome == Battle.Outcome.MONSTERS_WIN
 	_battle_log_button.text = "Return to town" if _party_fell else "Continue"
 	_battle_playing = false
-
-
-## The monster's HP under its picture, as the log plays.
-func _show_monster_hp(monster, hp: int) -> void:
-	_encounter_text.text = "%s\nHP %d/%d" % [monster.name, hp, monster.max_hp]
-
-
-## The monster's card shakes side to side after it's hit.
-func _shake_monster() -> void:
-	_monster_tween = Motion.shake(_encounter_card, _stop_monster_motion())
-
-
-## The monster's card hops down, toward the party, as it attacks.
-func _hop_monster() -> void:
-	_monster_tween = Motion.hop(_encounter_card, _stop_monster_motion(), Vector2.DOWN)
-
-
-## The monster goes down: a last shake, then it fades out (it stays faded
-## until the log is closed).
-func _fade_monster() -> void:
-	_shake_monster()
-	var tween := _encounter_picture.create_tween()
-	tween.tween_interval(Motion.SHAKE_TIME)
-	tween.tween_property(_encounter_picture, "modulate", MONSTER_DOWN, 0.4)
-
-
-## Stops the card's hop or shake, puts it back in the middle of the view
-## and returns that spot.
-func _stop_monster_motion() -> Vector2:
-	if _monster_tween != null and _monster_tween.is_valid():
-		_monster_tween.kill()
-	_encounter_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
-	return _encounter_card.position
-
-
-## Sizes the card to fit what it shows now, and holds that size, so HP text
-## changing width mid-fight never resizes (and so re-centers) it.
-func _fit_encounter_card() -> void:
-	_encounter_card.custom_minimum_size = Vector2.ZERO
-	_encounter_card.reset_size()
-	_encounter_card.custom_minimum_size = _encounter_card.get_combined_minimum_size()
-	_encounter_card.size = _encounter_card.custom_minimum_size
-	_stop_monster_motion()
 
 
 ## The closing lines of the log: who won, XP and level-ups.
@@ -461,6 +409,7 @@ func _battle_result(battle, levels: Dictionary) -> String:
 					lines.append("[b]%s reaches level %d![/b]" % [hero.name, hero.level])
 		Battle.Outcome.MONSTERS_WIN:
 			lines.append("[b][color=#%s]The party has fallen.[/color][/b]" % WRONG.to_html(false))
+			lines.append("They are carried back to town with 1 HP each.")
 		_:
 			lines.append("[b]Neither side can win. Both back away.[/b]")
 	return "\n".join(lines)
@@ -489,6 +438,7 @@ func _close_battle_log() -> void:
 	_battle_log.hide()
 	_encounter.hide()
 	if _party_fell:
+		Game.guild.carry_back(_party)
 		get_tree().change_scene_to_file(TOWN_SCENE)
 		return
 	_arrived()
@@ -1044,64 +994,13 @@ func _build_floor_overlay() -> Control:
 	_up_button = _hover_button("Go up", _go_up)
 	overlay.add_child(_up_button)
 
-	overlay.add_child(_build_encounter_popup())
+	_encounter = MonsterCards.new()
+	_encounter.battle_pressed.connect(_start_battle)
+	_encounter.hide()
+	overlay.add_child(_encounter)
 
 	_prompt.hide()
 	return overlay
-
-
-## The pop-up shown when a monster appears: its picture, name and HP, and
-## the Battle button that starts the fight. Hidden at first.
-func _build_encounter_popup() -> Control:
-	# A plain full-size holder rather than a CenterContainer: the card is kept
-	# centered by its anchors, so no container moves it back mid-hop or
-	# mid-shake.
-	var holder := Control.new()
-	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var box := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = PAPER
-	style.border_color = INK
-	style.set_border_width_all(3)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(16)
-	box.add_theme_stylebox_override("panel", style)
-	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	holder.add_child(box)
-	_encounter_card = box
-
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
-	box.add_child(column)
-
-	_encounter_picture = TextureRect.new()
-	_encounter_picture.custom_minimum_size = Vector2(180, 220)
-	_encounter_picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_encounter_picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_encounter_picture.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	column.add_child(_encounter_picture)
-
-	_encounter_text = _label("")
-	_encounter_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_encounter_text.add_theme_font_size_override("font_size", 22)
-	column.add_child(_encounter_text)
-
-	_encounter_button = Button.new()
-	_encounter_button.text = "Battle"
-	_encounter_button.focus_mode = Control.FOCUS_NONE
-	_encounter_button.custom_minimum_size = Vector2(140, 44)
-	_encounter_button.add_theme_font_size_override("font_size", 20)
-	_encounter_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_encounter_button.pressed.connect(_start_battle)
-	column.add_child(_encounter_button)
-
-	_encounter = holder
-	_encounter.hide()
-	return holder
 
 
 ## The battle log, covering the map: a title, the rounds (scrolls if long)
@@ -1124,6 +1023,7 @@ func _build_battle_log() -> Control:
 
 	_battle_log_title = _label("")
 	_battle_log_title.add_theme_font_size_override("font_size", 22)
+	_battle_log_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # Never widens the log.
 	column.add_child(_battle_log_title)
 
 	_battle_log_text = RichTextLabel.new()

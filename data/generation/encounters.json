@@ -1,4 +1,5 @@
 {
-	"chance": 0.1,
-	"monster": "skeleton"
+	"chance": 0.25,
+	"monster": "skeleton",
+	"group_chances": {"2": 0.3, "3": 0.1}
 }

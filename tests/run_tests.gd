@@ -12,6 +12,8 @@ const Hero = preload("res://src/rules/hero.gd")
 const Monster = preload("res://src/rules/monster.gd")
 const Encounters = preload("res://src/rules/encounters.gd")
 const Battle = preload("res://src/rules/battle.gd")
+const Guild = preload("res://src/rules/guild.gd")
+const SaveGame = preload("res://src/rules/save_game.gd")
 
 const SEEDS := 300
 
@@ -43,6 +45,9 @@ func _init() -> void:
 	test_skeleton()
 	test_encounters()
 	test_battles()
+	test_guild()
+	test_save_game()
+	test_party_falls()
 	print("%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 
@@ -506,6 +511,32 @@ func test_encounters() -> void:
 	expect(same, "the same floor gives the same encounters")
 	expect(Encounters.floor_seed(77) != 77, "encounter rolls don't share the floor's layout seed")
 
+	var sizes := {1: 0, 2: 0, 3: 0}
+	var other_size := false
+	for i in 10000:
+		var n := Encounters.roll_group_size(settings, rng)
+		if sizes.has(n):
+			sizes[n] += 1
+		else:
+			other_size = true
+	expect(not other_size, "a skeleton group is 1, 2 or 3")
+	expect(sizes[2] > 2800 and sizes[2] < 3200 and sizes[3] > 2800 and sizes[3] < 3200, "2 and 3 skeletons each come 30%% of the time (%s)" % sizes)
+	expect(sizes[1] > 3800 and sizes[1] < 4200, "a lone skeleton comes 40%% of the time")
+	expect(Encounters.roll_group_size({}, rng) == 1 and Encounters.roll_group_size({"group_chances": {"2": 1.0}}, rng) == 2, "no group chances means alone; chance 1 always gives the group")
+	var skeleton: Dictionary = Monster.load_types()["skeleton"]
+	var three := Encounters.spawn_group(skeleton, 3, rng)
+	expect(three.map(func(m): return m.name) == ["Skeleton A", "Skeleton B", "Skeleton C"], "a group's monsters are lettered A, B, C")
+	expect(Encounters.spawn_group(skeleton, 1, rng)[0].name == "Skeleton", "a lone monster keeps its plain name")
+	var party := [Hero.from_class(Hero.load_classes()["warrior"], "Bram")]
+	var battle = Battle.fight(party, three, rng)
+	var hit := {}
+	for round in battle.rounds:
+		for move in round:
+			if three.has(move["target"]):
+				hit[move["target"]] = true
+	expect(battle.outcome != Battle.Outcome.DRAW and (battle.outcome == Battle.Outcome.MONSTERS_WIN or three.all(func(m): return m.is_down())), "a fight against three ends with all of one side down")
+	expect(battle.outcome != Battle.Outcome.HEROES_WIN or battle.rewards()["xp"] == 15, "beating three skeletons gives 15 XP")
+
 
 func test_battles() -> void:
 	var warrior_class: Dictionary = Hero.load_classes()["warrior"]
@@ -581,3 +612,83 @@ func expect(condition: bool, description: String) -> void:
 	if not condition:
 		_failures += 1
 		printerr("FAIL: " + description)
+
+
+func test_guild() -> void:
+	var guild = Guild.new()
+	expect(guild.heroes.is_empty() and guild.delve_party().is_empty(), "a new guild has no heroes")
+	var warrior_data: Dictionary = Hero.load_classes().get("warrior", {})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var bram = guild.recruit(warrior_data, Hero.load_names(), rng)
+	expect(guild.heroes == [bram], "a recruit joins the roster")
+	expect(guild.party.is_empty() and guild.reserves() == [bram], "a recruit isn't in the party until picked")
+	expect(bram.class_id == "warrior" and bram.level == 1 and bram.xp == 0, "a recruit is a level 1 hero of the class picked")
+	expect(bram.hp == bram.max_hp and bram.max_hp == 20, "a recruit starts with full HP from the class")
+	var second = guild.recruit(warrior_data, Hero.load_names(), rng)
+	expect(guild.add_to_party(second) and guild.add_to_party(bram), "guild heroes can join the party")
+	expect(not guild.add_to_party(bram), "a hero can't join the party twice")
+	expect(not guild.add_to_party(Hero.new()), "only guild heroes can join the party")
+	expect(guild.party == [second, bram] and guild.reserves().is_empty(), "the party keeps the order heroes joined")
+	expect(guild.delve_party() == [second, bram], "every standing party hero goes on a delve")
+	second.take_damage(999)
+	expect(guild.delve_party() == [bram], "a downed hero stays behind")
+	var copy = Guild.from_dict(guild.to_dict())
+	expect(copy.heroes.size() == 2 and copy.heroes[0].name == bram.name and copy.heroes[1].is_down(), "the roster saves and loads")
+	expect(copy.party == [copy.heroes[1], copy.heroes[0]], "the party saves and loads in order")
+	expect(guild.remove_from_party(second) and guild.party == [bram] and guild.reserves() == [second], "a hero can leave the party and stays in the guild")
+	expect(not guild.remove_from_party(second), "a hero not in the party can't leave it")
+	var full = Guild.new()
+	for i in 7:
+		full.recruit(warrior_data, Hero.load_names(), rng)
+	for hero in full.heroes:
+		full.add_to_party(hero)
+	expect(full.party.size() == Guild.MAX_PARTY and Guild.MAX_PARTY == 5 and full.party_full(), "the party holds at most 5 heroes")
+	expect(not full.add_to_party(full.heroes[6]) and full.reserves().size() == 2, "a full party takes no one else")
+	full.remove_from_party(full.party[0])
+	expect(not full.party_full() and full.add_to_party(full.heroes[6]), "a hero can join once there's room")
+
+
+func test_save_game() -> void:
+	var guild = Guild.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var warrior_data: Dictionary = Hero.load_classes().get("warrior", {})
+	for i in 3:
+		guild.recruit(warrior_data, Hero.load_names(), rng)
+	guild.add_to_party(guild.heroes[2])
+	guild.add_to_party(guild.heroes[0])
+	guild.heroes[0].take_damage(6)
+	guild.heroes[0].gain_xp(130)
+	var path := "user://test_save.json"
+	expect(SaveGame.write(guild, path), "the save writes")
+	var loaded = SaveGame.read(path)
+	expect(loaded != null and loaded.heroes.size() == 3, "the save loads every hero")
+	if loaded != null:
+		var a = guild.heroes[0]
+		var b = loaded.heroes[0]
+		expect(b.name == a.name and b.hp == a.hp and b.level == a.level and b.xp == a.xp and b.class_id == a.class_id and b.gender == a.gender, "a loaded hero keeps name, HP, level, XP, class and gender")
+		expect(loaded.party == [loaded.heroes[2], loaded.heroes[0]], "the loaded party has the same heroes in order")
+	DirAccess.remove_absolute(path)
+	expect(SaveGame.read(path) == null, "no save file loads nothing")
+	expect(SaveGame.guild_from_text("not json") == null and SaveGame.guild_from_text("[1]") == null and SaveGame.guild_from_text("{}") == null, "a broken save loads nothing")
+
+
+func test_party_falls() -> void:
+	var guild = Guild.new()
+	expect(not guild.can_delve(), "an empty party can't delve")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var warrior_data: Dictionary = Hero.load_classes().get("warrior", {})
+	for i in 2:
+		guild.add_to_party(guild.recruit(warrior_data, Hero.load_names(), rng))
+	expect(guild.can_delve(), "a party with a standing hero can delve")
+	for hero in guild.party:
+		hero.take_damage(999)
+	expect(not guild.can_delve(), "a party that's all down can't delve")
+	expect(guild.party[0].revive(0) and guild.party[0].hp == 1, "revive gives at least 1 HP")
+	guild.party[0].take_damage(999)
+	Guild.carry_back(guild.party)
+	expect(guild.party.all(func(h): return h.hp == 1), "a fallen party comes back with 1 HP each")
+	expect(not guild.party[0].revive(5) and guild.party[0].hp == 1, "revive does nothing to a standing hero")
+	expect(guild.can_delve(), "after being carried back the party can delve again")

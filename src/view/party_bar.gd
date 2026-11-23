@@ -1,8 +1,14 @@
-extends HBoxContainer
-## The party along the bottom of the dungeon view: one card per hero with
-## the class badge on the left, then name, class and level, and the HP (red),
-## SP (green) and MP (blue) bars.
-## Call show_party() with the heroes, and refresh() after their numbers change.
+extends Control
+## The party's hero cards: one per hero with the class badge on the left,
+## then name, class and level, and the HP (red), SP (green) and MP (blue)
+## bars. Call show_party() with the heroes, and refresh() after their numbers
+## change.
+## The cards sit in one row when they fit the bar's width. If not, they stack
+## like a pyramid: the smaller half on top (2 over 3 for five heroes), and
+## cards narrow down to fit the wider bottom row.
+## The bar is a plain Control, not a container, so the cards can never make
+## it wider than the space it's given: its width always comes from its
+## parent, and only its height follows the cards.
 
 const Motion = preload("res://src/view/motion.gd")
 
@@ -12,6 +18,9 @@ const CARD := Color("e3d5b2")
 const BAR_BACK := Color("2a2118")
 
 const CARD_WIDTH := 280.0
+const MIN_CARD_WIDTH := 120.0    ## Badge and bars still fit.
+const NARROW_CARD := 270.0        ## Below this the title leaves out the class.
+const GAP := 8.0
 const BADGE_SIZE := 64.0
 const BAR_HEIGHT := 16.0
 const XP_HEIGHT := 4.0
@@ -25,11 +34,43 @@ const BARS := [
 var _party: Array = []
 var _cards: Array = []            ## Per hero: {"badge": TextureRect, "title": Label, "bars": [[ProgressBar, Label], ...]}.
 var _classes := {}                ## Class id -> class data (name, icon, ...).
+var _block: VBoxContainer         ## Holds the rows; centered, or at the left.
+var _rows: Array = []             ## [top, bottom] HBoxContainers.
+var _layout := []                 ## [cards on top, card width] last arranged.
+var _left := false                ## Cards at the left instead of the middle.
 
 
 func _init() -> void:
-	add_theme_constant_override("separation", 8)
-	alignment = BoxContainer.ALIGNMENT_CENTER
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_block = VBoxContainer.new()
+	_block.add_theme_constant_override("separation", GAP)
+	add_child(_block)
+	for i in 2:
+		var row := HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		row.add_theme_constant_override("separation", GAP)
+		_block.add_child(row)
+		_rows.append(row)
+	resized.connect(_arrange)
+	resized.connect(_place)
+	_block.minimum_size_changed.connect(_place)
+
+
+## Puts the cards at the left of the bar instead of the middle.
+func align_left() -> void:
+	_left = true
+	_place()
+
+
+## Sits the cards at the bottom of the bar (middle or left), and makes the
+## bar as tall as the cards.
+func _place() -> void:
+	var needed := _block.get_combined_minimum_size()
+	if custom_minimum_size.y != needed.y:
+		custom_minimum_size.y = needed.y
+	_block.size = needed
+	var x := 0.0 if _left else floorf((size.x - needed.x) / 2.0)
+	_block.position = Vector2(maxf(x, 0.0), size.y - needed.y)
 
 
 ## Shows `party` (heroes). `classes` is class id -> class data, for each
@@ -37,11 +78,46 @@ func _init() -> void:
 func show_party(party: Array, classes := {}) -> void:
 	_party = party
 	_classes = classes
-	for child in get_children():
-		child.queue_free()
+	for row in _rows:
+		for child in row.get_children():
+			row.remove_child(child)
+			child.queue_free()
 	_cards.clear()
 	for hero in party:
-		add_child(_build_card())
+		_build_card()
+	_layout = []
+	_arrange()
+	refresh()
+
+
+## How many cards go on the top row, and how wide each card is, for `count`
+## cards in `width` pixels.
+static func layout_for(count: int, width: float) -> Array:
+	if count * CARD_WIDTH + (count - 1) * GAP <= width or count <= 1:
+		return [0, CARD_WIDTH]
+	var bottom := count - count / 2
+	var card_width := (width - (bottom - 1) * GAP) / bottom
+	return [count / 2, clampf(floorf(card_width), MIN_CARD_WIDTH, CARD_WIDTH)]
+
+
+## Puts the cards in one row or the pyramid, to suit the bar's width.
+func _arrange() -> void:
+	if _cards.is_empty() or size.x <= 0:
+		return
+	var layout := layout_for(_cards.size(), size.x)
+	if layout == _layout:
+		return
+	_layout = layout
+	for i in _cards.size():
+		var card: Control = _cards[i]["card"]
+		var row: HBoxContainer = _rows[0] if i < layout[0] else _rows[1]
+		if card.get_parent() != row:
+			if card.get_parent() != null:
+				card.get_parent().remove_child(card)
+			row.add_child(card)
+		card.custom_minimum_size.x = layout[1]
+		_stop_motion(i)
+	_rows[0].visible = layout[0] > 0
 	refresh()
 
 
@@ -54,7 +130,11 @@ func refresh() -> void:
 		var class_name_text: String = hero_class.get("name", hero.class_id.capitalize())
 		var icon: String = hero_class.get("icon", "")
 		card["badge"].texture = load(icon) if icon != "" and ResourceLoader.exists(icon) else null
-		card["title"].text = "%s  ·  %s  Lv %d" % [hero.name, class_name_text, hero.level]
+		if card["card"].custom_minimum_size.x < NARROW_CARD:
+			card["title"].text = "%s  Lv %d" % [hero.name, hero.level]
+		else:
+			card["title"].text = "%s  ·  %s  Lv %d" % [hero.name, class_name_text, hero.level]
+		card["title"].tooltip_text = "%s, %s" % [hero.name, class_name_text]
 		var xp_bar: ProgressBar = card["xp"]
 		xp_bar.max_value = maxi(hero.xp_to_next_level(), 1)
 		xp_bar.value = hero.xp
@@ -109,6 +189,7 @@ func _stop_motion(i: int) -> Vector2:
 	return entry["rest"]
 
 
+## Makes a card for the next hero; _arrange() puts it in a row.
 func _build_card() -> Control:
 	var card := PanelContainer.new()
 	card.custom_minimum_size.x = CARD_WIDTH
@@ -178,5 +259,5 @@ func _build_card() -> Control:
 		column.add_child(bar)
 		bars.append([bar, text])
 
-	_cards.append({"card": card, "badge": badge, "title": title, "xp": xp_bar, "bars": bars})
+	_cards.append({"card": card, "badge": badge, "title": title, "xp": xp_bar, "bars": bars, "rest": Vector2.ZERO})
 	return card

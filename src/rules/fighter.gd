@@ -76,6 +76,15 @@ func roll_attack(rng: RandomNumberGenerator) -> int:
 
 
 ## Every bar full; a downed fighter is back on their feet.
+## Brings a downed fighter back with `amount` HP (at least 1, at most
+## max HP). Does nothing to one who's standing. Returns true if revived.
+func revive(amount := 1) -> bool:
+	if not is_down():
+		return false
+	hp = clampi(amount, 1, max_hp)
+	return true
+
+
 func rest() -> void:
 	hp = max_hp
 	sp = max_sp

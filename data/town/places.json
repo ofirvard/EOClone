@@ -1,12 +1,14 @@
 {
 	"picture": "res://assets/ui/town_picture.png",
+	"show_party": true,
 	"places": [
-		{"id": "delve", "name": "Delve", "icon": "res://assets/ui/icons/delve.png", "scene": "res://scenes/map_preview.tscn"},
+		{"id": "delve", "name": "Delve", "icon": "res://assets/ui/icons/delve.png", "action": "delve"},
 		{"id": "inn", "name": "Inn", "icon": "res://assets/ui/icons/inn.png"},
 		{"id": "shop", "name": "Shop", "icon": "res://assets/ui/icons/shop.png"},
 		{"id": "tavern", "name": "Tavern", "icon": "res://assets/ui/icons/tavern.png"},
 		{"id": "smith", "name": "Smith", "icon": "res://assets/ui/icons/smith.png"},
 		{"id": "alchemist", "name": "Alchemist", "icon": "res://assets/ui/icons/alchemist.png"},
-		{"id": "guild_hall", "name": "Guild hall", "icon": "res://assets/ui/icons/guild_hall.png"}
+		{"id": "guild_hall", "name": "Guild hall", "icon": "res://assets/ui/icons/guild_hall.png", "scene": "res://scenes/guild.tscn"},
+		{"id": "save", "name": "Save", "action": "save"}
 	]
 }

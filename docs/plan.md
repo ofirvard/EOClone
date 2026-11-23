@@ -42,9 +42,9 @@ Encounters while exploring, settled by orders you give before the fight.
 - The fight resolves on its own and shows what happened
 - A hero sheet (see "Heroes" in the design doc): HP, SP, MP, defense, speed, aggro, skills, level and XP
 - HP and supplies that carry through a run, so going deeper is a risk (fatigue is a later idea)
-- Return to town to heal; a wiped party loses the run's map
-- Marked enemies on the map tell you what you'll face
-- Save and load a run (seed plus your maps)
+- Return to town to heal; a wiped party loses the run's map (a wiped party is carried back to town with 1 HP each; done)
+- Save and load: Save in town keeps the guild and party, loaded at start (done); saving mid-delve (seed plus your maps) still to decide
+- Guild screen: Recruit hires a level 1 hero of a chosen class (works); Manage party picks who delves, up to 5 (works; party shown in town); Train does nothing yet
 
 **Done when:** a run is a tense trip down and back, and orders matter.
 
@@ -106,7 +106,7 @@ Different places to chart, each with its own look and rules.
 
 ## Phase 7: City building
 
-The guild's home town grows with your success. Still to design. A first town menu already exists: Delve, Smith, Inn, Tavern, Shop, Alchemist and Guild hall, listed on the left; only Delve works so far.
+The guild's home town grows with your success. Still to design. A first town menu already exists: Delve, Inn, Shop, Tavern, Smith, Alchemist, Guild hall and Save, listed on the left; Delve, Guild hall and Save work so far.
 
 - Spend income on buildings that unlock services (shop tiers, inn, training, cartographers' hall)
 - Town upgrades feed back into expeditions: better gear, more heroes, better survey tools
